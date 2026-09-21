@@ -716,7 +716,7 @@ export class FlySprite {
       } else if (s === 'zoomies') {
         // sprint tight laps around the desk spot; ends back at the spot facing the viewer
         const laps = 2, dur = 3000, u = clamp(st / dur, 0, 1), ramp = ease01(st / 300) * (1 - ease01((st - dur + 400) / 400));
-        const ang = smooth(u) * TAU * laps, R0 = 0.42 * ramp;
+        const ang = smooth(u) * TAU * laps, R0 = 0.2 * ramp;
         this.lap = { x: Math.cos(ang) * R0 - R0, z: Math.sin(ang) * R0, yaw: -(ang + Math.PI / 2), w: ramp };
         const ph = (st / 1000) * 6.0 * TAU;   // 2x walk gait
         bodyY = Math.abs(Math.sin(ph)) * 0.008 * ramp;
@@ -733,8 +733,9 @@ export class FlySprite {
         const flop = ease01((st - 900) / 350) * (1 - ease01((st - 2200) / 600));
         const buzz = Math.sin(st * 0.9) * Math.sin(st * 0.37);
         yaw = (st / 1000) * TAU * 2.2 * spinK; roll = Math.PI * flop + Math.sin(st * 0.02) * 0.12 * spinK;
-        bodyY = spinK * (0.03 + Math.abs(buzz) * 0.04) + flop * 0.06;
-        wingBlur = spinK * (0.6 + 0.4 * buzz); wingSpread = spinK * (0.6 + 0.3 * buzz) + flop * 0.4;
+        // rolled onto its back: the roll pivot is at the feet, so lift the body by its height to keep it on the desk
+        bodyY = spinK * (0.03 + Math.abs(buzz) * 0.04) + Math.sin(Math.PI * flop / 2) ** 2 * this.bodyH * 0.62;
+        wingBlur = spinK * (0.6 + 0.4 * buzz); wingSpread = spinK * (0.6 + 0.3 * buzz) + flop * 0.9;
         const flail = spinK * 0.9 + flop * 0.35, tw = flop * (Math.max(0, Math.sin(st * 0.05)) > 0.7 ? 1 : 0);
         for (const side of ['left', 'right']) for (const seg of ['T1', 'T2', 'T3']) {
           const ph2 = st * 0.03 + (side === 'left' ? 1.3 : 0) + (seg === 'T2' ? 2 : seg === 'T3' ? 4 : 0);
