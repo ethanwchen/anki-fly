@@ -32,6 +32,9 @@ const VOICE = {
   idle: ['still here.', 'waiting.', 'take your time.', 'cards?', 'I\'ll wait.'],
   sessionEnd: ['{cards}. good session.', 'done for now.', '{cards}, {again} stung.'],
   amnesia: ['…who are you?', 'blank.', 'what deck?'],
+  ecstatic: ['I can\'t stop.', 'best day.', 'we are unstoppable.', 'more! more!'],
+  crashout: ['I can\'t do this.', 'everything stings.', 'why.', 'AAAAA', 'flop.'],
+  sulk: ['…', 'fine.', 'whatever.', 'I need sugar.', 'leave me be.'],
   synced: ['I remember now.', 'so many smells.', '{n} cards. wow.'],
 };
 const pick = (key, vars = {}) => { const pool = VOICE[key]; const t = pool[Math.floor(Math.random() * pool.length)]; return t.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? ''); };
@@ -220,6 +223,10 @@ class AnkiFly {
         const kcActive = g.KC.filter(i => sim.elig[i] > 0.2);
         this.session.cards++;
         const secs = ev.ms ? (ev.ms / 1000).toFixed(0) + 's' : '';
+        // mood: recent run of answers
+        this.againRun = ease === 1 ? (this.againRun || 0) + 1 : 0;
+        this.easyRun = ease === 4 ? (this.easyRun || 0) + 1 : 0;
+        if (ease >= 3) this.sulkUntil = 0;
         this.force(['pressAgain', 'pressHard', 'pressGood', 'pressEasy'][Math.min(4, Math.max(1, ease)) - 1], 750);
         if (ease >= 3) {
           sim.stimulate(g.PAM, 60, 400);
@@ -228,7 +235,9 @@ class AnkiFly {
           this.brain.pulse(g.PAM, GREEN);
           this.streak++;
           this.setStatus(`liked that · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PAM reward dopamine depressed KC→MBON avoidance synapses');
-          if (this.streak > 0 && this.streak % 5 === 0) this.sugar();
+          if (this.streak >= 12 && this.streak % 6 === 0) { setTimeout(() => this.force('zoomies', 3200), 800); this.maybeSay('ecstatic', {}, { every: 1, force: true }); }
+          else if (this.streak >= 8 && this.streak % 4 === 0 || this.easyRun === 3) { setTimeout(() => this.force('dance', 2400), 800); this.maybeSay('ecstatic', {}, { every: 1, force: true }); }
+          else if (this.streak > 0 && this.streak % 5 === 0) this.sugar();
           else if (this.streak > 0 && this.streak % 3 === 0) { setTimeout(() => this.force('celebrate', 900), 800); this.maybeSay('streak', { n: this.streak }, { every: 1, force: true }); }
           else this.maybeSay(ease === 4 ? 'easy' : 'good', {}, { every: 3 });
         } else if (ease === 1) {
@@ -238,7 +247,8 @@ class AnkiFly {
           this.brain.pulse(g.PPL1, RED);
           const had = this.streak; this.streak = 0;
           this.setStatus(`that stung · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PPL1 punishment dopamine depressed KC→MBON approach synapses');
-          if (had >= 3) this.maybeSay('streakBroken', {}, { every: 1, force: true }); else this.maybeSay('again', {}, { every: 2 });
+          if (this.againRun >= 3) { setTimeout(() => this.force('crashout', 3000), 800); this.sulkUntil = performance.now() + 45000; this.maybeSay('crashout', {}, { every: 1, force: true, ms: 3500 }); }
+          else if (had >= 3) this.maybeSay('streakBroken', {}, { every: 1, force: true }); else this.maybeSay('again', {}, { every: 2 });
         } else {
           sim.stimulate(g.PPL1, 25, 250);
           const changed = sim.dopamine(0, 0.4);
@@ -342,7 +352,10 @@ class AnkiFly {
       if (phase === 2) { if (g.DNp09?.length && Math.random() < 0.02) sim.stimulate(g.DNp09, 40, 800); return 'walk'; }
       return 'idle';
     }
-    if (this.sprite.setScene) return 'study';
+    if (this.sprite.setScene) {
+      if (this.sulkUntil && now < this.sulkUntil) { if (Math.random() < 0.002) this.maybeSay('sulk', {}, { every: 1 }); return 'sulk'; }
+      return 'study';
+    }
     return this.odorIdx ? 'idle' : (Math.sin(now / 7000) > 0.6 ? 'walk' : 'idle');
   }
 

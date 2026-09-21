@@ -1,7 +1,7 @@
 // 3D fruit fly sprite (three.js). Same API as fly_sprite.js:
 //   new FlySprite(canvas); .setState(s); .update(dtMs); .draw(); .resize()
 // States: idle, walk, groom, proboscis, sleep, startle, fly (free-standing)
-//         study, pressAgain, pressHard, pressGood, pressEasy, celebrate, sleepDesk, still (scene 'study')
+//         study, pressAgain, pressHard, pressGood, pressEasy, celebrate, dance, zoomies, crashout, sulk, sleepDesk, still (scene 'study')
 //         think, write, sleepDesk, still (scene 'exam'); setScene('study'|'exam'|null)
 //
 // Geometry: anatomically detailed Drosophila body from TuragaLab/flybody (Apache-2.0),
@@ -79,10 +79,10 @@ const POSE = {
 };
 
 // scene states (the fly stays at its desk), auto-chains and how 'sleep' maps when a scene is set
-const SCENE_STATES = new Set(['study', 'pressAgain', 'pressHard', 'pressGood', 'pressEasy', 'celebrate', 'think', 'write', 'sleepDesk', 'still']);
+const SCENE_STATES = new Set(['study', 'pressAgain', 'pressHard', 'pressGood', 'pressEasy', 'celebrate', 'dance', 'zoomies', 'crashout', 'sulk', 'think', 'write', 'sleepDesk', 'still']);
 const PRESS = { pressAgain: 'again', pressHard: 'hard', pressGood: 'good', pressEasy: 'easy' };
 const ALL_STATES = new Set(['idle', 'walk', 'groom', 'proboscis', 'sleep', 'startle', 'fly', ...SCENE_STATES]);
-const CHAIN = { pressAgain: ['study', 700], pressHard: ['study', 700], pressGood: ['study', 700], pressEasy: ['study', 700], celebrate: ['study', 800], write: ['think', 800] };
+const CHAIN = { pressAgain: ['study', 700], pressHard: ['study', 700], pressGood: ['study', 700], pressEasy: ['study', 700], celebrate: ['study', 800], dance: ['study', 2200], zoomies: ['study', 3000], crashout: ['sulk', 2800], write: ['think', 800] };
 
 function cardTexture() {
   const c = document.createElement('canvas'); c.width = 128; c.height = 80;
@@ -655,9 +655,12 @@ export class FlySprite {
           }
           if (!still) { this.addJ('head_twist', Math.sin(T * 0.6) * 0.06); this.addJ('head', Math.sin(T * 0.45) * 0.03); }
         } else if (PRESS[s]) {
-          // reach (0-250) -> press (250-450) -> return (450-700)
-          const reach = ease01(st / 250) * (1 - ease01((st - 450) / 250));
-          pressAmt = ease01((st - 250) / 90) * (1 - ease01((st - 420) / 120));
+          // reach (0-250) -> press (250-450) -> return (450-700); reluctant (slow, slumped) when pressing from 'sulk'
+          const sulky = this.prevState === 'sulk' && s === 'pressAgain';
+          const ts = sulky ? st * 700 / 1400 : st;
+          const reach = ease01(ts / 250) * (1 - ease01((ts - 450) / 250));
+          pressAmt = ease01((ts - 250) / 90) * (1 - ease01((ts - 420) / 120));
+          if (sulky) { bodyY -= 0.02; this.addJ('head', -0.25); for (const sd2 of ['left', 'right']) { this.addJ(`wing_roll_${sd2}`, -0.2); this.addJ(`antenna_${sd2}`, 0.35); } }
           pressBtn = PRESS[s];
           const P = R[pressBtn]; if (P) this.applyPose(P, reach);
           const sd = (this.reachSide || {})[pressBtn] || 'right';
@@ -696,6 +699,64 @@ export class FlySprite {
           this.addJ('head', 0.04 * Math.sin(f * 1.2)); this.addJ('head_abduct', 0.1 * u);
           scribble = { x: sx, z: sz, down: 1 };
         }
+      } else if (s === 'dance') {
+        // rapid hops with wing flicks, side-to-side wiggle, head bob, front legs up
+        const k = ease01(st / 120) * (1 - ease01((st - 2000) / 200));
+        const hopF = 4.2, hp = (st / 1000) * hopF;
+        const hop = Math.max(0, Math.sin(hp * TAU)) ** 1.5;
+        bodyY = hop * 0.09 * k; roll = Math.sin(hp * TAU * 0.5) * 0.22 * k; yaw = Math.sin(hp * TAU * 0.5) * 0.25 * k;
+        pitch = -0.1 * hop * k;
+        wingSpread = k * 0.5 + hop * 0.35 * k;
+        const flick = Math.cos(hp * TAU) * 0.3 * k;
+        this.addJ('wing_yaw_left', flick); this.addJ('wing_yaw_right', -flick);
+        this.addJ('head', (0.4 + Math.sin(hp * TAU * 2) * 0.2) * k); this.addJ('head_twist', Math.sin(hp * TAU) * 0.15 * k);
+        for (const side of ['left', 'right']) { const sg = side === 'left' ? 1 : -1; this.leg('T1', side, { lift: (0.8 + Math.sin(hp * TAU + sg) * 0.3) * k, swing: (0.3 + Math.sin(hp * TAU * 0.5) * 0.2 * sg) * k }); this.leg('T2', side, { lift: hop * 0.3 * k }); this.leg('T3', side, { lift: hop * 0.35 * k }); }
+        for (let j = 2; j <= 7; j++) this.addJ(`abdomen_${j}`, (-0.05 + Math.sin(hp * TAU) * 0.04) * k);
+        shadowA = 1 - hop * 0.35; shadowS = 1 + hop * 0.25;
+      } else if (s === 'zoomies') {
+        // sprint tight laps around the desk spot; ends back at the spot facing the viewer
+        const laps = 2, dur = 3000, u = clamp(st / dur, 0, 1), ramp = ease01(st / 300) * (1 - ease01((st - dur + 400) / 400));
+        const ang = smooth(u) * TAU * laps, R0 = 0.42 * ramp;
+        this.lap = { x: Math.cos(ang) * R0 - R0, z: Math.sin(ang) * R0, yaw: -(ang + Math.PI / 2), w: ramp };
+        const ph = (st / 1000) * 6.0 * TAU;   // 2x walk gait
+        bodyY = Math.abs(Math.sin(ph)) * 0.008 * ramp;
+        roll = 0.28 * ramp; pitch = -0.05 * ramp;   // banked turn
+        for (const side of ['left', 'right']) for (const seg of ['T1', 'T2', 'T3']) {
+          const tri = ((side === 'left') ^ (seg === 'T2')) ? 0 : Math.PI, p = ph + tri, sw = Math.sin(p), lift = Math.max(0, Math.sin(p + Math.PI / 2));
+          this.leg(seg, side, { swing: sw * 0.32 * ramp, lift: lift * (sw > -0.2 ? 0.75 : 0) * ramp });
+        }
+        this.addJ('head', 0.15 * ramp); this.addJ('head_abduct', 0.3 * ramp);
+        wingSpread = 0.12 * ramp;
+      } else if (s === 'crashout') {
+        // frantic spin (0-900) -> flop onto back (900-1300) -> twitch (1300-2200) -> slowly get up (2200-2800)
+        const spinK = ease01(st / 100) * (1 - ease01((st - 800) / 200));
+        const flop = ease01((st - 900) / 350) * (1 - ease01((st - 2200) / 600));
+        const buzz = Math.sin(st * 0.9) * Math.sin(st * 0.37);
+        yaw = (st / 1000) * TAU * 2.2 * spinK; roll = Math.PI * flop + Math.sin(st * 0.02) * 0.12 * spinK;
+        bodyY = spinK * (0.03 + Math.abs(buzz) * 0.04) + flop * 0.06;
+        wingBlur = spinK * (0.6 + 0.4 * buzz); wingSpread = spinK * (0.6 + 0.3 * buzz) + flop * 0.4;
+        const flail = spinK * 0.9 + flop * 0.35, tw = flop * (Math.max(0, Math.sin(st * 0.05)) > 0.7 ? 1 : 0);
+        for (const side of ['left', 'right']) for (const seg of ['T1', 'T2', 'T3']) {
+          const ph2 = st * 0.03 + (side === 'left' ? 1.3 : 0) + (seg === 'T2' ? 2 : seg === 'T3' ? 4 : 0);
+          this.leg(seg, side, { lift: (Math.sin(ph2) * 0.5 + 0.7) * flail + tw * 0.4, swing: Math.cos(ph2 * 1.3) * 0.35 * flail });
+        }
+        this.addJ('head', Math.sin(st * 0.04) * 0.3 * spinK - 0.2 * flop); this.addJ('head_twist', Math.sin(st * 0.03) * 0.25 * spinK);
+        for (let j = 2; j <= 7; j++) this.addJ(`abdomen_${j}`, Math.sin(st * 0.05 + j) * 0.05 * spinK + 0.06 * flop);
+        this.addJ('antenna_left', 0.3 * spinK); this.addJ('antenna_right', 0.3 * spinK);
+        shadowA = 1 - spinK * 0.2;
+      } else if (s === 'sulk') {
+        // slumped low, head down, wings drooped, antennae flat, slow breathing with an occasional heavy sigh
+        const x = ease01(st / 900);
+        const slow = Math.sin(T * TAU * 0.18) * 0.5 + 0.5;
+        const sighPh = (T % 7) / 7, sigh = sighPh < 0.35 ? Math.sin(sighPh / 0.35 * Math.PI) : 0;
+        bodyY = -0.03 * x + slow * 0.003 + sigh * 0.01; pitch = 0.1 * x - sigh * 0.03;
+        this.addJ('head', (-0.45 - sigh * 0.1) * x); this.addJ('head_twist', Math.sin(T * 0.3) * 0.04);
+        for (const side of ['left', 'right']) { this.addJ(`wing_roll_${side}`, -0.3 * x); this.addJ(`wing_yaw_${side}`, 0.12 * x); this.addJ(`antenna_${side}`, 0.45 * x); }
+        for (const side of ['left', 'right']) for (const seg of ['T1', 'T2', 'T3']) {
+          const c = this.legCal[`${seg}_${side}`];
+          this.addJ(`femur_${seg}_${side}`, -0.22 * x * c.femurUp); this.addJ(`tibia_${seg}_${side}`, -0.2 * x * c.tibiaUp);
+        }
+        for (let j = 2; j <= 7; j++) this.addJ(`abdomen_${j}`, (0.03 + sigh * 0.09 - slow * 0.02) * x);
       } else if (s === 'sleepDesk') {
         const x = ease01(st / 1100);
         const slow = Math.sin(T * TAU * 0.22) * 0.5 + 0.5;
@@ -835,7 +896,9 @@ export class FlySprite {
     if (this.yaw === undefined || still) this.yaw = targetYaw;
     let dy = targetYaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     this.yaw += dy * Math.min(1, dt / 220);
-    this.mover.rotation.y = this.yaw + yaw;
+    const lap = s === 'zoomies' && this.lap ? this.lap : null;
+    this.mover.rotation.y = lap ? this.sceneYaw + (lap.yaw - 0) * lap.w + yaw : this.yaw + yaw;
+    if (lap) this.yaw = this.sceneYaw;
     if (this.sceneName) this.stage.rotation.y = this.sceneYaw;
     // props: buttons depress + glow, pencil follows the holding claw
     for (const b of ['again', 'hard', 'good', 'easy']) {
@@ -861,6 +924,8 @@ export class FlySprite {
       }
     }
     this.mover.position.x = (this.x - 0.5) * this.visW;
+    this.mover.position.z = 0;
+    if (lap) { const c = Math.cos(this.sceneYaw), sn = Math.sin(this.sceneYaw); this.mover.position.x += lap.x * c + lap.z * sn; this.mover.position.z += -lap.x * sn + lap.z * c; }
     this.lift.position.y = bodyY;
     this.lift.rotation.z = pitch;   // MuJoCo x forward -> pitch about z after root rotation? root maps y->z; pitch about world z is a nose-up/down of a fly facing +x
     this.lift.rotation.x = roll;
