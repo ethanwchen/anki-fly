@@ -12,6 +12,8 @@ const LABELS = {
   pirate: ['🏴‍☠️', 'Pirate'], halo: ['😇', 'Halo'], devil: ['😈', 'Devil horns'], viking: ['⚔️', 'Viking helm'], chef: ['👨‍🍳', 'Chef toque'],
   graduate: ['🎓', 'Grad cap'], headphones: ['🎧', 'Headphones'], bow: ['🎀', 'Bow'], flowers: ['🌸', 'Flower crown'], cowboy: ['🤠', 'Cowboy hat'],
   beret: ['🎨', 'Beret'], alien: ['👽', 'Alien boppers'], scarf: ['🧣', 'Scarf'], propeller: ['🚁', 'Propeller cap'],
+  pumpkin: ['🎃', 'Pumpkin'], witch: ['🧙‍♀️', 'Witch hat'], ghost: ['👻', 'Ghost sheet'], antlers: ['🦌', 'Reindeer'], elf: ['🧝', 'Elf hat'],
+  snowman: ['⛄', 'Snowman'], leprechaun: ['🍀', 'Leprechaun'], hearts: ['💕', 'Heart boppers'], birthday: ['🎂', 'Birthday cake'],
 };
 
 class Wardrobe {

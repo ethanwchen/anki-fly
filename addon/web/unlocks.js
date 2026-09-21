@@ -14,6 +14,11 @@ export const UNLOCKS = [
   { id: 'graduate', exam: 0.9, req: 'an exam at 90%' },
   { id: 'devil', crashouts: 5, req: '5 crashouts (7 Agains in a row)' },
   { id: 'santa', month: 12, req: 'December' },
+  // seasonal (months is a list; the costume stays unlocked all year once first worn is up to the caller)
+  { id: 'pumpkin', months: [10], req: 'October' }, { id: 'witch', months: [10], req: 'October' }, { id: 'ghost', months: [10], req: 'October' },
+  { id: 'antlers', months: [12], req: 'December' }, { id: 'elf', months: [12], req: 'December' }, { id: 'snowman', months: [12, 1, 2], req: 'winter' },
+  { id: 'leprechaun', months: [3], req: 'March' }, { id: 'hearts', months: [2], req: 'February' },
+  { id: 'birthday', days: 365, req: '365 study days' },
 ];
 
 export function unlocked(id, st) {
@@ -24,6 +29,7 @@ export function unlocked(id, st) {
   if (u.exam && (st.bestExam || 0) < u.exam) return false;
   if (u.crashouts && (st.crashouts || 0) < u.crashouts) return false;
   if (u.month && new Date().getMonth() + 1 !== u.month) return false;
+  if (u.months && !u.months.includes(new Date().getMonth() + 1)) return false;
   return true;
 }
 

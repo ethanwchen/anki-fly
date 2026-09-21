@@ -27,6 +27,7 @@ export const COSTUMES = [
   "none", "sunglasses", "monocle", "tophat", "catears", "bunnyears", "partyhat", "crown", "wizard",
   "santa", "pirate", "halo", "devil", "viking", "chef", "graduate", "headphones", "bow", "flowers",
   "cowboy", "beret", "alien", "scarf", "propeller",
+  "pumpkin", "witch", "ghost", "antlers", "elf", "snowman", "leprechaun", "hearts", "birthday",
 ] as const;
 
 export const PRESENCE_TTL_S = 120;

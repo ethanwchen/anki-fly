@@ -337,6 +337,92 @@ const COSTUME_MAKERS = {
     self.spinner = prop;   // spun in update()
   },
 };
+// seasonal
+Object.assign(COSTUME_MAKERS, {
+  pumpkin(G, W, top, H, std) {
+    const orange = std(0xe8741c, { roughness: 0.6 });
+    const hat = new THREE.Group();
+    for (let i = 0; i < 8; i++) { const a = i / 8 * TAU, lobe = new THREE.Mesh(new THREE.SphereGeometry(W * 0.3, 14, 10), orange); lobe.position.set(Math.cos(a) * W * 0.22, Math.sin(a) * W * 0.22, W * 0.22); lobe.scale.set(1, 1, 0.85); hat.add(lobe); }
+    const core = new THREE.Mesh(new THREE.SphereGeometry(W * 0.4, 16, 12), orange); core.position.z = W * 0.22; core.scale.set(1, 1, 0.8); hat.add(core);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.04, W * 0.06, W * 0.2, 6), std(0x4a6b2a)); stem.rotation.x = Math.PI / 2; stem.rotation.z = 0.3; stem.position.z = W * 0.6; hat.add(stem);
+    const face = std(0x2a1200, { emissive: 0xffb020, emissiveIntensity: 0.9 });
+    for (const sgn of [-1, 1]) { const eye = new THREE.Mesh(new THREE.ConeGeometry(W * 0.07, W * 0.1, 3), face); eye.rotation.x = -Math.PI / 2; eye.rotation.z = Math.PI; eye.position.set(sgn * W * 0.16, W * 0.44, W * 0.3); hat.add(eye); }
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(W * 0.3, W * 0.04, W * 0.06), face); mouth.position.set(0, W * 0.47, W * 0.14); hat.add(mouth);
+    hat.position.copy(top); hat.position.z -= W * 0.02; G.add(hat);
+  },
+  witch(G, W, top, H, std) {
+    const black = std(0x141018, { roughness: 0.7 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.78, W * 0.78, W * 0.04, 28), black); brim.rotation.x = Math.PI / 2;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.36, W * 1.15, 24), black); cone.rotation.x = Math.PI / 2 + 0.45; cone.rotation.z = -0.25; cone.position.set(-W * 0.12, -W * 0.2, W * 0.5);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.36, W * 0.38, W * 0.1, 24), std(0x6b2fbf, { roughness: 0.5 })); band.rotation.x = Math.PI / 2; band.position.z = W * 0.06;
+    const buckle = new THREE.Mesh(new THREE.TorusGeometry(W * 0.06, W * 0.02, 6, 12), std(0xd4a53a, { metalness: 0.8, roughness: 0.3 })); buckle.position.set(0, W * 0.38, W * 0.06); buckle.rotation.x = Math.PI / 2;
+    const hat = new THREE.Group(); hat.add(brim, cone, band, buckle); hat.position.copy(top); hat.rotation.x = 0.1; G.add(hat);
+  },
+  ghost(G, W, top, H, std) {
+    const sheet = new THREE.MeshStandardMaterial({ color: 0xf4f4f8, roughness: 1, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(W * 0.62, 20, 14, 0, TAU, 0, Math.PI * 0.62), sheet); dome.rotation.x = Math.PI / 2; dome.scale.set(1, 1.05, 1);
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.6, W * 0.7, W * 0.3, 20, 1, true), sheet); skirt.rotation.x = Math.PI / 2; skirt.position.z = -W * 0.3;
+    const eyeMat = std(0x111111);
+    const g = new THREE.Group(); g.add(dome, skirt);
+    for (const sgn of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(W * 0.07, 8, 6), eyeMat); e.position.set(sgn * W * 0.2, W * 0.6, W * 0.05); g.add(e); }
+    g.position.copy(top); g.position.y += W * 0.15; g.position.z -= W * 0.25; G.add(g);
+  },
+  antlers(G, W, top, H, std) {
+    const bone = std(0x6e4b2a, { roughness: 0.85 });
+    for (const sgn of [-1, 1]) {
+      const main = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.03, W * 0.045, W * 0.7, 6), bone); main.rotation.x = Math.PI / 2; main.rotation.z = -sgn * 0.45; main.position.set(sgn * W * 0.35, 0, W * 0.32);
+      const tine1 = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.02, W * 0.035, W * 0.35, 6), bone); tine1.rotation.x = Math.PI / 2; tine1.rotation.z = -sgn * 1.2; tine1.position.set(sgn * W * 0.5, 0, W * 0.5);
+      const tine2 = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.02, W * 0.03, W * 0.3, 6), bone); tine2.rotation.x = Math.PI / 2 - 0.5; tine2.rotation.z = sgn * 0.2; tine2.position.set(sgn * W * 0.42, W * 0.12, W * 0.58);
+      const grp = new THREE.Group(); grp.add(main, tine1, tine2); grp.position.copy(top); grp.position.z -= W * 0.05; G.add(grp);
+    }
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(W * 0.09, 10, 8), std(0xe0201a, { emissive: 0x801008, emissiveIntensity: 0.6 }));
+    nose.position.set(0, H.fwdMax * 1.02, -W * 0.05); G.add(nose);
+  },
+  elf(G, W, top, H, std) {
+    const green = std(0x2e8b3d, { roughness: 0.8 }), red = std(0xc8202a, { roughness: 0.8 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.45, W * 0.45, W * 0.1, 24), red); brim.rotation.x = Math.PI / 2; brim.position.z = W * 0.04;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.42, W * 1.0, 24), green); cone.rotation.x = Math.PI / 2 + 0.55; cone.rotation.z = 0.2; cone.position.set(W * 0.12, -W * 0.3, W * 0.45);
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(W * 0.08, 10, 8), std(0xd4a53a, { metalness: 0.8, roughness: 0.3 })); bell.position.set(W * 0.3, -W * 0.75, W * 0.62);
+    const hat = new THREE.Group(); hat.add(brim, cone, bell); hat.position.copy(top); hat.rotation.x = 0.1; G.add(hat);
+  },
+  snowman(G, W, top, H, std) {
+    const felt = std(0x1c1c22, { roughness: 0.8 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.62, W * 0.62, W * 0.05, 24), felt); brim.rotation.x = Math.PI / 2;
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.4, W * 0.4, W * 0.5, 24), felt); crown.rotation.x = Math.PI / 2; crown.position.z = W * 0.25;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.405, W * 0.405, W * 0.08, 24), std(0xc8202a)); band.rotation.x = Math.PI / 2; band.position.z = W * 0.08;
+    const hat = new THREE.Group(); hat.add(brim, crown, band); hat.position.copy(top); hat.rotation.x = -0.12; hat.rotation.y = 0.18; G.add(hat);
+    const scarfMat = std(0x2b6fd6, { roughness: 1 }), neck = new THREE.Vector3(0, -W * 0.35, -W * 0.15);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(W * 0.36, W * 0.09, 10, 28), scarfMat); ring.position.copy(neck); ring.rotation.x = 0.25; G.add(ring);
+  },
+  leprechaun(G, W, top, H, std) {
+    const green = std(0x1f7a3a, { roughness: 0.7 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.68, W * 0.68, W * 0.05, 26), green); brim.rotation.x = Math.PI / 2;
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.42, W * 0.36, W * 0.5, 26), green); crown.rotation.x = Math.PI / 2; crown.position.z = W * 0.25;
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.375, W * 0.375, W * 0.1, 26), std(0x111111)); band.rotation.x = Math.PI / 2; band.position.z = W * 0.08;
+    const buckle = new THREE.Mesh(new THREE.TorusGeometry(W * 0.06, W * 0.02, 6, 12), std(0xd4a53a, { metalness: 0.8, roughness: 0.3 })); buckle.position.set(0, W * 0.37, W * 0.08); buckle.rotation.x = Math.PI / 2;
+    const clover = new THREE.Group(); for (let i = 0; i < 4; i++) { const a = i / 4 * TAU, leaf = new THREE.Mesh(new THREE.SphereGeometry(W * 0.05, 8, 6), std(0x5ad26b)); leaf.position.set(Math.cos(a) * W * 0.05, Math.sin(a) * W * 0.05, 0); clover.add(leaf); }
+    clover.position.set(W * 0.3, W * 0.25, W * 0.2); clover.rotation.x = Math.PI / 2;
+    const hat = new THREE.Group(); hat.add(brim, crown, band, buckle, clover); hat.position.copy(top); hat.rotation.x = 0.1; G.add(hat);
+  },
+  hearts(G, W, top, H, std) {
+    const pink = std(0xf0567a, { emissive: 0x5a1020, emissiveIntensity: 0.4, roughness: 0.5 });
+    for (const sgn of [-1, 1]) {
+      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.02, W * 0.02, W * 0.5, 6), std(0x333)); stalk.rotation.x = Math.PI / 2; stalk.rotation.z = -sgn * 0.3; stalk.position.set(top.x + sgn * W * 0.22, top.y, top.z + W * 0.24);
+      const heart = new THREE.Group();
+      for (const s2 of [-1, 1]) { const lobe = new THREE.Mesh(new THREE.SphereGeometry(W * 0.08, 10, 8), pink); lobe.position.set(s2 * W * 0.06, 0, W * 0.05); heart.add(lobe); }
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(W * 0.13, W * 0.16, 4), pink); tip.rotation.x = -Math.PI / 2; tip.rotation.z = Math.PI / 4; tip.position.z = -W * 0.04; heart.add(tip);
+      heart.position.set(top.x + sgn * W * 0.38, top.y, top.z + W * 0.5); G.add(stalk, heart);
+    }
+  },
+  birthday(G, W, top, H, std) {
+    const icing = std(0xfff1f6, { roughness: 0.9 }), cake = std(0xe9b3c6, { roughness: 0.9 });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.4, W * 0.4, W * 0.22, 24), cake); base.rotation.x = Math.PI / 2; base.position.z = W * 0.11;
+    const top2 = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.42, W * 0.42, W * 0.06, 24), icing); top2.rotation.x = Math.PI / 2; top2.position.z = W * 0.25;
+    const candle = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.035, W * 0.035, W * 0.3, 8), std(0x4f8ff0)); candle.rotation.x = Math.PI / 2; candle.position.z = W * 0.42;
+    const flame = new THREE.Mesh(new THREE.SphereGeometry(W * 0.05, 8, 6), std(0xffd54a, { emissive: 0xff9a1a, emissiveIntensity: 1.2 })); flame.position.z = W * 0.62; flame.scale.set(1, 1, 1.5);
+    const g = new THREE.Group(); g.add(base, top2, candle, flame); g.position.copy(top); G.add(g);
+  },
+});
 const COSTUMES = ['none', ...Object.keys(COSTUME_MAKERS)];
 
 // ---------- binary loader ----------
@@ -522,7 +608,7 @@ export class FlySprite {
     if (name === 'none') { this.needsRender = true; return; }
     const G = this.costumeGroup = new THREE.Group(); this.byName.head.add(G);
     const H = this.head; G.position.copy(H.c); G.quaternion.copy(H.quat);   // costume space: x = right, y = forward, z = up, origin = head centre
-    const W = H.halfW * 2, top = new THREE.Vector3(0, -W * 0.05, H.upMax * 0.92);
+    const W = H.halfW * 2, top = new THREE.Vector3(0, -W * 0.22, H.upMax * 0.9);   // hats sit toward the back of the head, off the face
     const std = (c, extra = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.6 }, extra));
     const mk = COSTUME_MAKERS[name];
     if (mk) mk(G, W, top, H, std, this);
