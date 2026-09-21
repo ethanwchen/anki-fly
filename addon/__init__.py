@@ -338,7 +338,7 @@ def setup() -> None:
     gui_hooks.state_did_change.append(fly.on_state)
     mw.addonManager.setConfigUpdatedAction(__name__, lambda _cfg: fly.apply_config())
 
-    menu = mw.form.menuTools.addMenu("Anki Fly")
+    menu = mw.form.menuTools.addMenu("Drosophil-Anki")
     toggle = QAction("Show / hide the fly", mw)
     toggle.setShortcut(QKeySequence("Ctrl+Shift+F"))
     toggle.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)

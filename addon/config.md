@@ -1,4 +1,4 @@
-# Anki Fly
+# Drosophil-Anki
 
 A fruit fly whose brain is a real slice of the MaleCNS connectome, studying alongside you.
 
@@ -14,5 +14,5 @@ A fruit fly whose brain is a real slice of the MaleCNS connectome, studying alon
 - `idle_seconds`: seconds without a review before the fly starts grooming / wandering.
 - `sleep_seconds`: seconds without a review before the fly falls asleep.
 
-Everything is also in **Tools → Anki Fly** and in the ⚙ menu on the widget: Deep Focus (`Ctrl+Shift+D`), Fly Exam (`Ctrl+Shift+E`), minimize, hide (`Ctrl+Shift+F`). The fly's learned synapse weights are stored in
+Everything is also in **Tools → Drosophil-Anki** and in the ⚙ menu on the widget: Deep Focus (`Ctrl+Shift+D`), Fly Exam (`Ctrl+Shift+E`), minimize, hide (`Ctrl+Shift+F`). The fly's learned synapse weights are stored in
 `user_files/memory.json` inside the add-on folder; delete it to give the fly amnesia.

@@ -50,7 +50,7 @@ const FACTS = [
   'My wiring is from a real fly (MaleCNS 2026).',
   'Hover my brain to see what each dot is.',
   'Deep Focus in the gear menu if I get chatty.',
-  'Tools → Anki Fly → Sync to give me your history.',
+  'Tools → Drosophil-Anki → Sync to give me your history.',
   '5 in a row and I get sugar.',
 ];
 

@@ -1,4 +1,4 @@
-# Anki Fly
+# Drosophil-Anki
 
 A fruit fly that studies with you. It lives in the corner of Anki; its brain is a 9,000-neuron
 slice of the real **MaleCNS v1.0** connectome (Janelia FlyEM + Google Research, 2026) running as a
@@ -22,12 +22,12 @@ The fly sits an exam on your deck:
   looming → giant fiber → escape jump (when you come back), grooming and sleep when you idle.
 - **Immersive layer.** Thought bubbles explain what just happened in the brain; hover the brain to
   see which neuron and neurotransmitter is under the cursor; fly facts while you think.
-- **Fly Exam** (Tools → Anki Fly, or `Ctrl+Shift+E`): pick decks/tags and the fly sits an exam on
+- **Fly Exam** (Tools → Drosophil-Anki, or `Ctrl+Shift+E`): pick decks/tags and the fly sits an exam on
   those cards. The score is a Monte-Carlo readout of Anki's own FSRS retrievability (the real
   gauge), with the fly's connectome memory blended in at 25% (the fun part), plus true retention,
   again rate, stability-per-minute, consistency and backlog from your review log, and a diagnosis
   with the learning-science reason for each flag.
-- **Sync with your history.** Tools → Anki Fly → Sync replays your whole review log into the fly's
+- **Sync with your history.** Tools → Drosophil-Anki → Sync replays your whole review log into the fly's
   synapses (aggregated per note), so a year of Anki becomes a year of fly memories in seconds.
 - **Minimize / hide.** Hover the widget for `–` (collapse to a tiny fly) and `×` (hide for this
   session). `Ctrl+Shift+F` toggles it. Options in the add-on config.

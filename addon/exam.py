@@ -253,7 +253,7 @@ def open_exam_dialog() -> None:
             mw.addonManager.get_logger(__name__).exception("Fly Exam failed")
         except Exception:
             pass
-        showWarning("Anki Fly: the exam could not be prepared.\n\n" + traceback.format_exc()[-1500:], title="Anki Fly")
+        showWarning("Drosophil-Anki: the exam could not be prepared.\n\n" + traceback.format_exc()[-1500:], title="Drosophil-Anki")
 
 
 def _open_exam_dialog() -> None:
