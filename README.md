@@ -1,97 +1,87 @@
 # Drosophil-Anki
 
-A fruit fly that studies with you. It lives in the corner of Anki; its brain is a 9,000-neuron
-slice of the real **MaleCNS v1.0** connectome (Janelia FlyEM + Google Research, 2026) running as a
-leaky-integrate-and-fire spiking simulation. Your cards are its odors, your answers are its
-dopamine, and you can watch the neurons fire.
+A fruit fly with a real brain studies with you in Anki.
 
-![The fly studying with you](docs/widget.gif)
+The fly in the corner is not a mascot. Its brain is a slice of the fruit fly connectome (MaleCNS v1.0,
+Janelia and Google, 2026) running as a live spiking-neuron simulation while you review. Your cards are
+its smells, your answers are its dopamine, and you can watch the neurons fire.
 
-Full demo video: [docs/anki-fly-demo.mp4](docs/anki-fly-demo.mp4)
+**Install**: Anki → Tools → Add-ons → Get Add-ons… → code **`888374074`** → restart Anki.
+AnkiWeb page: https://ankiweb.net/shared/info/888374074 · Anki 25.02+ on Mac, Windows, Linux.
 
-The fly sits an exam on your deck:
+![Dr. Buzz studying](docs/widget.gif)
 
 ## What it does
 
-- **Every card is a smell.** The note id picks 6 of 61 olfactory glomeruli; their projection
-  neurons fire, ~5% of the Kenyon cells respond (sparse coding, from the real wiring).
-- **Your answers are dopamine.** Good/Easy fires the PAM reward neurons; Again fires PPL1
-  punishment neurons. The dopamine-gated KC→MBON plasticity rule rewires the fly's synapses, so it
-  builds its own memory of your deck. A "fly memory" bar shows how it feels about the current card.
-- **Behaviours come from the circuits.** Sugar → MN9 → proboscis extension (5-streak reward),
-  looming → giant fiber → escape jump (when you come back), grooming and sleep when you idle.
-- **Immersive layer.** Thought bubbles explain what just happened in the brain; hover the brain to
-  see which neuron and neurotransmitter is under the cursor; fly facts while you think.
-- **Fly Exam** (Tools → Drosophil-Anki, or `Ctrl+Shift+E`): pick decks/tags and the fly sits an exam on
-  those cards. The score is a Monte-Carlo readout of Anki's own FSRS retrievability (the real
-  gauge), with the fly's connectome memory blended in at 25% (the fun part), plus true retention,
-  again rate, stability-per-minute, consistency and backlog from your review log, and a diagnosis
-  with the learning-science reason for each flag.
-- **Leech radar.** Cards the fly keeps getting punished on are probably your leeches; a "dreaded" chip
-  on the widget opens them in the browser.
-- **Pacing nudge.** When your last 20 answers get slower and wronger than the start of the session, the
-  fly suggests a break (at most every 15 minutes; `pacing_nudges` in config).
-- **Sync with your history.** Tools → Drosophil-Anki → Sync replays your whole review log into the fly's
-  synapses (aggregated per note), so a year of Anki becomes a year of fly memories in seconds.
-- **Name your fly, resize the widget** (drag the top-left grip or − / + size in the gear menu; the
-  ratio is locked so nothing distorts), a **Wardrobe** of 32 costumes (9 seasonal) (hats, sunglasses, cat ears, halo, propeller cap…) unlocked
-  by studying: cards reviewed, study days, a 90% exam, or surviving 5 crashouts.
-- **Two real brains.** The default fly runs the male MaleCNS connectome; switch to the female fly and it
-  runs the FlyWire FAFB connectome instead (10,322 neurons in the pack, a genuinely different brain, with
-  its own memory file).
-- **Fly race** (optional, front page only): a weekly leaderboard under the deck list, cards reviewed
-  this week per person with each fly's face (and costume) next to the name, a green dot for who's
-  studying right now. Click a fly for its profile (level, weekly cards, race wins, team tag); your own
-  profile has checkboxes for what friends may see. Friends by fly code; no ratings or cards are shared.
-- **Levels and XP** for the fly (10 XP a review, bonuses for new study days and for finally getting a
-  card it was still learning), a **team tag** floating over the fly (e.g. BCM), and race wins counted
-  each week you finish first among your friends. Uses the
-  official friends server by default (`backend/` in this repo, a Cloudflare Worker; you can point
-  `friends_server` at your own). Only name, species, costume, mood and aggregate counts are shared, never cards or decks.
-- **Minimize / hide.** Hover the widget for `–` (collapse to a tiny fly) and `×` (hide for this
-  session). `Ctrl+Shift+F` toggles it. Options in the add-on config.
+**A brain, not a mascot**
+- Every card is a smell. Its note id activates olfactory neurons; a sparse set of Kenyon cells responds, as in the real wiring.
+- Good and Easy fire the reward (PAM) neurons, Again fires the punishment (PPL1) neurons, and the fly's Kenyon-cell → MBON synapses rewire the way a real fly learns. The memory bar shows how it feels about the current card.
+- Hover the brain to see which neuron and transmitter is under the cursor.
+- **Sync** replays your whole review history into the fly's brain in seconds.
+- Two real brains: the male fly runs MaleCNS, the female fly runs the FlyWire connectome.
 
-## Install
+![Brain view](docs/brain.gif)
 
-In Anki: **Tools → Add-ons → Get Add-ons…**, paste **`888374074`**, restart Anki.
-AnkiWeb page: https://ankiweb.net/shared/info/888374074
+**A fly with a personality**
+- A 3D fly from the flybody anatomical model at a desk with your cards and its own Again / Hard / Good / Easy buttons, which it presses along with you.
+- Moods from your session: dances and zoomies on a strong run, a crash-out and a sulk after too many Agains, asleep at its desk if you leave.
+- It speaks rarely, on purpose: only for things worth noticing, and only for streaks that are impressive by your own standards.
 
-Or download `anki-fly.ankiaddon` from the [latest release](https://github.com/ethanwchen/anki-fly/releases/latest)
-and double-click it. Developers: `./build.sh` builds it from this repo.
+**Fly Exam** (Ctrl+Shift+E): pick decks and the fly sits an exam on them, pencil in hand. The score is Anki's own FSRS prediction of what you would remember right now, explained in plain words, with true retention, again rate and consistency from your review log, and a short diagnosis with the research reason behind each flag.
 
-Or symlink `addon/` into `~/Library/Application Support/Anki2/addons21/anki_fly`.
+![Fly Exam](docs/exam.gif)
 
-Requires Anki ≥ 25.02 (tested on 26.09.2, macOS). No Python dependencies; the simulation runs in
-JavaScript inside Anki's webview.
+![Exam report](docs/exam-report.png)
+
+**Make it yours**: name your fly, give it a team tag (BCM, UCLA…), level it up with XP from every review, and dress it from a **Wardrobe** of 40 costumes unlocked by studying: hats, sunglasses, cat ears, seasonal outfits, and a medical and language-learner set (stethoscope, scrub cap, head mirror, goggles, surgical mask, language headset, dictionary).
+
+![Wardrobe](docs/wardrobe.png)
+
+**Fly race**: a weekly leaderboard on Anki's home screen of cards reviewed by you and your friends, each fly's face and costume next to its name, a green dot for who is studying right now. Click a fly for its profile; your own profile has checkboxes for what friends may see, and friends can be removed from theirs. Friends are added by fly code. Only your fly's name, look, level and weekly totals are shared, never cards, decks or individual answers.
+
+![Fly race](docs/race.png)
+
+![Friend profile](docs/race-profile.png)
+
+**Not distracting**
+- Deep Focus (Ctrl+Shift+D) keeps the fly still and silent.
+- Minimize it to a tiny fly, resize it (drag the top-left corner), or hide it for the session (Ctrl+Shift+F).
+- A gentle "take a break?" when your answers get slower and wronger than at the start of the session, at most every 15 minutes.
+- A "to revisit" chip pointing at the cards you keep missing.
+
+Full demo video: [docs/anki-fly-demo.mp4](docs/anki-fly-demo.mp4)
 
 ## Development
 
-    python3 tools/extract_subgraph.py   # rebuilds addon/web/data from neuprint-cns.janelia.org (public, no token)
-    node tests/test_sim.mjs             # LIF engine unit tests + real-subgraph sanity
-    node tests/test_circuits.mjs        # sugar→MN9, loom→GF, odor→sparse KC, dopamine plasticity, no runaway
+    ./build.sh                                  # -> dist/anki-fly.ankiaddon (refuses to package without the brain data)
+    python3 tools/extract_subgraph.py           # rebuild the male pack from neuprint-cns.janelia.org (public, no token)
+    python3 tools/extract_subgraph.py --dataset female
+    node tests/test_sim.mjs                     # LIF engine unit tests + real-subgraph sanity
+    node tests/test_circuits.mjs                # male pack: sugar→MN9, loom→GF, sparse odor code, plasticity, recovery
+    node tests/test_circuits_female.mjs         # the same on the FlyWire pack
     <venv with aqt>/bin/python tests/test_addon.py   # offscreen Anki: hooks, exam data collection
-    open addon/web/index.html?dev=1     # standalone widget with event buttons (serve via http for modules)
+    cd backend && npm test                      # friends server (Cloudflare Worker)
 
-### Model notes (honest version)
+`backend/` is the friends server (Cloudflare Worker + KV). The add-on points at the official deployment
+by default; `npx wrangler deploy` publishes your own and `friends_server` in the config selects it.
 
-- Dynamics are Shiu et al. 2024 (Nature): τ_m 20 ms, V_rest −52, V_th −45, V_reset −52 mV,
-  refractory 2.2 ms, delay 1.8 ms, τ_syn 5 ms, 0.275 mV × synapse count, sign by predicted
-  neurotransmitter (ACh +, GABA/Glu −).
-- The subcircuit: uniglomerular PNs, all Kenyon cells, APL/DPM, MBONs, PAM/PPL1 DANs, LC4 → DNp01
-  (giant fiber), sugar GRNs (LB3) with their 1- and 2-hop interneurons to MN9/MN1/MN6, DNp09, DNg11,
-  MDN, DNa01/02, and a 4,000-neuron open-loop silhouette. Edges with ≥ 3 synapses.
-- Deviations from a pure whole-brain model, each chosen after testing: dopaminergic/serotonergic/
-  octopaminergic neurons have no fast synaptic effect (their effect *is* the plasticity rule);
-  APL/DPM output is scaled ×0.5 because they are non-spiking, graded neurons; the antennal-lobe
-  excitatory local neurons are excluded because in a LIF model they recruit every glomerulus;
-  silhouette neurons receive from the circuit but don't feed back.
-- Plasticity: PAM depresses eligible KC→glutamatergic (avoidance) MBON synapses, PPL1 depresses
-  KC→GABA/ACh (approach) MBON synapses; eligibility trace 3 s; slow recovery.
+### Model notes
 
-## Data & licenses
+- Dynamics follow Shiu et al. 2024 (Nature): τ_m 20 ms, V_rest −52, V_th −45, V_reset −52 mV, refractory
+  2.2 ms, delay 1.8 ms, τ_syn 5 ms, 0.275 mV × synapse count, sign by predicted transmitter (ACh +, GABA/Glu −).
+- Subcircuit: uniglomerular PNs, all Kenyon cells, APL/DPM, MBONs, PAM/PPL1 DANs, LC4 → DNp01 (giant fiber),
+  sugar GRNs with their 1- and 2-hop interneurons to MN9/MN1/MN6, walking/grooming/turning descending neurons, and a
+  4,000-neuron open-loop silhouette. Edges with ≥ 3 synapses.
+- Deliberate deviations, each chosen after testing: neuromodulatory neurons have no fast synaptic effect (their effect
+  is the plasticity rule); APL/DPM output is scaled because they are non-spiking, graded neurons; antennal-lobe
+  excitatory local neurons are excluded; LC4 is feed-forward; a sustained-loop quench stands in for the adaptation and
+  inhibition the subgraph lacks; silhouette neurons never feed back.
+- Plasticity: PAM depresses eligible KC→glutamatergic (avoidance) MBON synapses, PPL1 depresses KC→GABA/ACh (approach)
+  MBON synapses; 3 s eligibility trace; slow recovery.
+
+## Data and licenses
 
 - MaleCNS v1.0 connectome: CC BY 4.0, Janelia Research Campus / Google Research, via neuPrint.
 - FlyWire FAFB v783 connectome (female fly): CC BY-NC 4.0, Dorkenwald et al. 2024 / Schlegel et al. 2024. This
   add-on is free and non-commercial.
-- Fly body mesh: `flybody` (Turaga Lab / Google DeepMind, Apache-2.0), see `addon/web/vendor/`.
-- three.js: MIT. Add-on code: MIT.
+- Fly body meshes: flybody (Turaga Lab / Google DeepMind), Apache-2.0. three.js: MIT. Add-on code: MIT.

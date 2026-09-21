@@ -456,7 +456,7 @@ class AnkiFly {
 
   updateSession() {
     const s = this.session, k = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
-    $('session').textContent = s.cards ? `${s.cards} cards · ${s.again} stung · ${k(s.synapses)} synapses` : `${Object.keys(this.memory).length} cards remembered`;
+    $('session').textContent = s.cards ? `${s.cards} ${s.cards === 1 ? 'card' : 'cards'} · ${s.again} stung · ${k(s.synapses)} synapses` : `${Object.keys(this.memory).length} cards remembered`;
     this.updateLevel();
   }
 
