@@ -174,9 +174,13 @@ class AnkiFly {
   }
 
   // Speak only sometimes: `every` = 1 in N chance, unless `force`.
+  // Non-essential lines are rare on purpose: the goal is studying, not the fly. At most one every ~90 s,
+  // and only 1-in-`every` events even then. `force` is for things worth interrupting for.
   maybeSay(key, vars = {}, { every = 3, ms = 2600, force = false } = {}) {
     const now = performance.now();
-    if (!force && (Math.random() >= 1 / every || now - (this.lastSaid || 0) < 4000)) return;
+    const gap = force ? 4000 : 90000;
+    if (now - (this.lastSaid ?? -Infinity) < gap) return;
+    if (!force && Math.random() >= 1 / every) return;
     this.lastSaid = now;
     this.say(pick(key, vars), ms);
   }
@@ -238,7 +242,7 @@ class AnkiFly {
         const who = this.name || 'the fly';
         const feel = !m ? `new to ${who}` : this.pref(m) > 0.3 ? `${who} knows this one` : this.pref(m) < -0.3 ? `${who} is still learning this one` : `${who} has seen this ${m.seen}×`;
         this.setStatus(`sniffing this card · ${feel}`, false, `odor = glomeruli ${this.currentOdor.join(' ')} (from the note id)`);
-        this.maybeSay(!m ? 'newCard' : this.pref(m) > 0.3 ? 'likedCard' : this.pref(m) < -0.3 ? 'dreadCard' : 'seenCard', {}, { every: 4 });
+        if (m && this.pref(m) < -0.3) this.maybeSay('dreadCard', {}, { every: 3 });
         break;
       }
       case 'answer':
@@ -266,17 +270,19 @@ class AnkiFly {
           this.brain.pulse(g.PAM, GREEN);
           this.streak++;
           this.setStatus(`liked that · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PAM reward dopamine depressed KC→MBON avoidance synapses');
-          if (this.streak >= 12 && this.streak % 6 === 0) { setTimeout(() => this.force('zoomies', 3200), 800); this.maybeSay('ecstatic', {}, { every: 1, force: true }); }
-          else if (this.streak >= 8 && this.streak % 4 === 0 || this.easyRun === 3) { setTimeout(() => this.force('dance', 2400), 800); this.maybeSay('ecstatic', {}, { every: 1, force: true }); }
-          else if (this.streak > 0 && this.streak % 5 === 0) this.sugar();
-          else if (this.streak > 0 && this.streak % 3 === 0) { setTimeout(() => this.force('celebrate', 900), 800); this.maybeSay('streak', { n: this.streak }, { every: 1, force: true }); }
-          else this.maybeSay(ease === 4 ? 'easy' : 'good', {}, { every: 3 });
+          const bar = this.streakBar();
+          if (this.streak >= bar * 2 && this.streak % 6 === 0) { setTimeout(() => this.force('zoomies', 3200), 800); this.maybeSay('ecstatic', {}, { every: 1, force: true }); }
+          else if (this.streak === bar || (this.streak > bar && this.streak % 5 === 0)) { setTimeout(() => this.force('dance', 2400), 800); this.maybeSay('streak', { n: this.streak }, { every: 1, force: true }); }
+          else if (this.easyRun === 3) setTimeout(() => this.force('dance', 2400), 800);
+          else if (this.streak > 0 && this.streak % 5 === 0) this.sugar(true);
+          else if (this.streak > 0 && this.streak % 3 === 0) setTimeout(() => this.force('celebrate', 900), 800);
+          else this.maybeSay(ease === 4 ? 'easy' : 'good', {}, { every: 6 });
         } else if (ease === 1) {
           sim.stimulate(g.PPL1, 60, 400);
           const changed = sim.dopamine(0, 1.0);
           this.session.synapses += changed; this.session.again++;
           this.brain.pulse(g.PPL1, RED);
-          const had = this.streak; this.streak = 0;
+          const had = this.streak; this.recordStreak(had); this.streak = 0;
           this.setStatus(`that stung · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PPL1 punishment dopamine depressed KC→MBON approach synapses');
           if (this.againRun >= 7 && (this.againRun - 7) % 5 === 0) { this.progress.crashouts = (this.progress.crashouts || 0) + 1; setTimeout(() => this.force('crashout', 3000), 800); this.sulkUntil = performance.now() + 60000; this.maybeSay('crashout', {}, { every: 1, force: true, ms: 3500 }); }
           else if (this.againRun === 4) { this.sulkUntil = performance.now() + 30000; this.maybeSay('sulk', {}, { every: 1, force: true }); }
@@ -287,7 +293,7 @@ class AnkiFly {
           this.session.synapses += changed;
           this.brain.pulse(g.PPL1, YELLOW);
           this.setStatus(`hard one · ${changed} synapses nudged${secs ? ' · ' + secs : ''}`, false, 'weak PPL1 dopamine');
-          this.maybeSay('hard', {}, { every: 3 });
+          this.maybeSay('hard', {}, { every: 6 });
         }
         if (this.currentNid) {
           const kcs = new Set(kcActive);
@@ -308,6 +314,7 @@ class AnkiFly {
       case 'sugar': this.sugar(); break;
       case 'session_end': {
         this.clearOdor();
+        this.recordStreak(this.streak);
         const s = this.session, mins = ((performance.now() - s.start) / 60000).toFixed(0);
         this.setStatus(`session over · ${s.cards} cards in ${mins} min · ${s.synapses} synapses rewired`);
         if (s.cards) this.maybeSay('sessionEnd', { cards: s.cards === 1 ? '1 card' : `${s.cards} cards`, again: s.again }, { every: 1, force: true, ms: 5000 });
@@ -355,12 +362,12 @@ class AnkiFly {
     this.maybeSay(this.state === 'sleep' || this.state === 'sleepDesk' ? 'wake' : 'loom', {}, { every: 2 });
   }
 
-  sugar() {
+  sugar(quiet = false) {
     const g = this.g;
     if (g.GRN_sugar?.length) this.sim.stimulate(g.GRN_sugar, 150, 900);
     this.force('proboscis', 1600);
     this.setStatus('sugar! 5 in a row', false, 'sugar GRNs → MN9 → proboscis extension');
-    this.maybeSay('sugar', {}, { every: 1, force: true });
+    this.maybeSay('sugar', {}, { every: quiet ? 3 : 1, force: !quiet });
   }
 
   force(state, ms) { this.forcedState = { state, until: performance.now() + ms }; }
@@ -426,7 +433,7 @@ class AnkiFly {
       else if (!this._spriteErr) { this._spriteErr = true; console.warn('[anki-fly] 2D sprite failed too', e); }
     }
     this.brain.draw(wall);
-    if (!this.cfg.focus && now - this.lastEvent > 30000 && now - this.lastFact > 120000 && !asleep && !document.body.classList.contains('mini')) {
+    if (!this.cfg.focus && now - this.lastEvent > 60000 && now - this.lastFact > 240000 && !asleep && !document.body.classList.contains('mini')) {
       this.lastFact = now;
       if (Math.random() < 0.6) this.say(FACTS[this.factIdx++ % FACTS.length], 6000); else this.maybeSay('idle', {}, { every: 1, force: true });
     }
@@ -461,6 +468,22 @@ class AnkiFly {
     bar.style.width = `${50 + pref * 50}%`;
     bar.className = pref > 0.05 ? 'good' : (pref < -0.05 ? 'warn' : 'neutral');
     lab.textContent = `fly memory · seen ${m.seen}× · ${pref > 0.3 ? 'knows it' : pref < -0.3 ? 'still learning' : 'getting there'}`;
+  }
+
+  // ---------- streaks ----------
+  // A streak is only worth mentioning when it beats what this user usually manages: the 75th percentile of
+  // their recorded streak lengths, or 5 until there are at least 10 recorded streaks.
+  streakBar() {
+    const h = (this.progress.streaks || []);
+    if (h.length < 10) return 5;
+    const sorted = [...h].sort((a, b) => a - b);
+    return Math.max(5, sorted[Math.floor(sorted.length * 0.75)]);
+  }
+  recordStreak(n) {
+    if (n < 2) return;
+    const h = this.progress.streaks = this.progress.streaks || [];
+    h.push(n); if (h.length > 200) h.shift();
+    this.dirty = true;
   }
 
   // ---------- progress & costumes ----------
