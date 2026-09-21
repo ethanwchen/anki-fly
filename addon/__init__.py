@@ -1,7 +1,7 @@
 """Anki Fly: a connectome-driven fruit fly that studies with you.
 
 The simulation and rendering live in web/ (JavaScript, inside an AnkiWebView). This module
-only positions the widget and forwards review events.
+positions the widget, forwards review events, persists the fly's memory, and hosts the Fly Exam.
 """
 from __future__ import annotations
 
@@ -9,13 +9,16 @@ import json
 import os
 
 from aqt import gui_hooks, mw
-from aqt.qt import QAction, QColor, QEvent, QObject, Qt, QUrl
+from aqt.qt import QAction, QColor, QEvent, QKeySequence, QObject, QShortcut, Qt, QUrl
 from aqt.webview import AnkiWebView
+
+from . import exam
 
 PKG = mw.addonManager.addonFromModule(__name__)
 ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
 USER_FILES = os.path.join(ADDON_DIR, "user_files")
 MEMORY_PATH = os.path.join(USER_FILES, "memory.json")
+MINI_SIZE = 44
 
 mw.addonManager.setWebExports(__name__, r"web/.*")
 
@@ -24,16 +27,35 @@ def get_config() -> dict:
     return mw.addonManager.getConfig(__name__) or {}
 
 
+def write_config(cfg: dict) -> None:
+    mw.addonManager.writeConfig(__name__, cfg)
+
+
+def read_memory() -> dict | None:
+    try:
+        with open(MEMORY_PATH) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
 class FlyWidget(QObject):
     def __init__(self) -> None:
         super().__init__(mw)
         self.cfg = get_config()
+        self.minimized = bool(self.cfg.get("minimized", False))
+        self.closed_this_session = False
         host = mw.form.centralwidget
         self.web = AnkiWebView(parent=host, title="anki_fly")
         self.web.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.web.disable_zoom()
         self.web.set_bridge_command(self.on_cmd, self)
         self._apply_transparency()
+        # Anki's media server sends max-age=3600 for add-on files; make sure an updated add-on isn't served stale.
+        try:
+            self.web.page().profile().clearHttpCache()
+        except Exception:
+            pass
         # AnkiWebPage refuses main-frame navigation to /_addons/ URLs unless this is off.
         self.web.set_open_links_externally(False)
         self.web.load_url(QUrl(f"{mw.serverURL()}_addons/{PKG}/web/index.html"))
@@ -50,8 +72,10 @@ class FlyWidget(QObject):
 
     def apply_config(self) -> None:
         self.cfg = get_config()
-        self.web.setFixedSize(int(self.cfg.get("width", 330)), int(self.cfg.get("height", 150)))
-        self.web.setWindowOpacity(float(self.cfg.get("opacity", 0.95)))
+        if self.minimized:
+            self.web.setFixedSize(MINI_SIZE, MINI_SIZE)
+        else:
+            self.web.setFixedSize(int(self.cfg.get("width", 330)), int(self.cfg.get("height", 150)))
         self.reposition()
         self.update_visibility()
         self.send({"type": "config", "cfg": {
@@ -59,6 +83,8 @@ class FlyWidget(QObject):
             "showMemory": bool(self.cfg.get("show_memory_bar", True)),
             "idleSeconds": int(self.cfg.get("idle_seconds", 60)),
             "sleepSeconds": int(self.cfg.get("sleep_seconds", 240)),
+            "minimized": self.minimized,
+            "bubbles": bool(self.cfg.get("thought_bubbles", True)),
         }})
 
     def eventFilter(self, obj, evt) -> bool:  # noqa: N802
@@ -79,12 +105,28 @@ class FlyWidget(QObject):
         self.web.raise_()
 
     def update_visibility(self) -> None:
-        enabled = bool(self.cfg.get("enabled", True))
+        enabled = bool(self.cfg.get("enabled", True)) and not self.closed_this_session
         in_review = mw.state == "review"
         show = enabled and (in_review or bool(self.cfg.get("show_outside_review", True)))
         self.web.setVisible(show)
         if show:
             self.web.raise_()
+
+    def set_minimized(self, value: bool) -> None:
+        self.minimized = value
+        cfg = get_config()
+        cfg["minimized"] = value
+        write_config(cfg)
+        self.apply_config()
+
+    def toggle_visible(self) -> None:
+        """Ctrl+Shift+F / Tools menu: hide for this session, or bring back (and un-minimize)."""
+        if self.closed_this_session or self.minimized:
+            self.closed_this_session = False
+            self.set_minimized(False)
+        else:
+            self.closed_this_session = True
+            self.update_visibility()
 
     # ---- bridge
     def send(self, ev: dict) -> None:
@@ -94,6 +136,19 @@ class FlyWidget(QObject):
         if cmd == "fly:ready":
             self.load_memory()
             self.apply_config()
+            return {"ok": True}
+        if cmd == "fly:minimize":
+            self.set_minimized(True)
+            return {"ok": True}
+        if cmd == "fly:restore":
+            self.set_minimized(False)
+            return {"ok": True}
+        if cmd == "fly:close":
+            self.closed_this_session = True
+            self.update_visibility()
+            return {"ok": True}
+        if cmd == "fly:exam":
+            exam.open_exam_dialog()
             return {"ok": True}
         if cmd.startswith("fly:save:"):
             try:
@@ -108,22 +163,21 @@ class FlyWidget(QObject):
         return None
 
     def load_memory(self) -> None:
-        try:
-            with open(MEMORY_PATH) as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            return
-        self.send({"type": "loadMemory", "data": data})
+        data = read_memory()
+        if data:
+            self.send({"type": "loadMemory", "data": data})
 
     # ---- review events
     def on_question(self, card) -> None:
-        self.send({"type": "question", "nid": int(card.nid), "cid": int(card.id)})
+        deck = mw.col.decks.name(card.current_deck_id()) if mw.col else ""
+        self.send({"type": "question", "nid": int(card.nid), "cid": int(card.id), "deck": deck,
+                   "reps": int(card.reps), "lapses": int(card.lapses), "ivl": int(card.ivl)})
 
     def on_answer_shown(self, card) -> None:
         self.send({"type": "answer"})
 
     def on_answered(self, reviewer, card, ease: int) -> None:
-        self.send({"type": "rate", "ease": int(ease)})
+        self.send({"type": "rate", "ease": int(ease), "ms": int(card.time_taken()), "ivl": int(card.ivl)})
 
     def on_review_end(self) -> None:
         self.send({"type": "session_end"})
@@ -133,12 +187,6 @@ class FlyWidget(QObject):
         self.reposition()
         if new_state == "review" and old_state != "review":
             self.send({"type": "wake"})
-
-    def toggle(self) -> None:
-        cfg = get_config()
-        cfg["enabled"] = not cfg.get("enabled", True)
-        mw.addonManager.writeConfig(__name__, cfg)
-        self.apply_config()
 
 
 def setup() -> None:
@@ -152,9 +200,32 @@ def setup() -> None:
     gui_hooks.reviewer_will_end.append(fly.on_review_end)
     gui_hooks.state_did_change.append(fly.on_state)
     mw.addonManager.setConfigUpdatedAction(__name__, lambda _cfg: fly.apply_config())
-    action = QAction("Anki Fly (toggle)", mw)
-    action.triggered.connect(fly.toggle)
-    mw.form.menuTools.addAction(action)
+
+    menu = mw.form.menuTools.addMenu("Anki Fly")
+    toggle = QAction("Show / hide the fly", mw)
+    toggle.setShortcut(QKeySequence("Ctrl+Shift+F"))
+    toggle.triggered.connect(fly.toggle_visible)
+    menu.addAction(toggle)
+    test = QAction("Fly Exam: test the fly on your cards…", mw)
+    test.setShortcut(QKeySequence("Ctrl+Shift+E"))
+    test.triggered.connect(exam.open_exam_dialog)
+    menu.addAction(test)
+    amnesia = QAction("Give the fly amnesia (reset its memory)", mw)
+    amnesia.triggered.connect(lambda: _amnesia(fly))
+    menu.addAction(amnesia)
+    mw._anki_fly_shortcuts = [QShortcut(QKeySequence("Ctrl+Shift+F"), mw, activated=fly.toggle_visible)]
+
+
+def _amnesia(fly: FlyWidget) -> None:
+    from aqt.utils import askUser, tooltip
+    if not askUser("Wipe everything the fly has learned about your cards?"):
+        return
+    try:
+        os.remove(MEMORY_PATH)
+    except OSError:
+        pass
+    fly.send({"type": "amnesia"})
+    tooltip("The fly stares blankly. It remembers nothing.")
 
 
 gui_hooks.main_window_did_init.append(setup)

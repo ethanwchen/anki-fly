@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fly Exam</title>
+<style>
+  :root { color-scheme: dark; --bg: #14161d; --panel: #1c1f28; --ink: #e6e8ee; --ink2: #9aa0b0; --ink3: #6b7180; --line: rgba(255,255,255,0.08);
+          --seq1: #0f3d3a; --seq2: #146b62; --seq3: #1c9a8a; --seq4: #46c9b3; --seq5: #a8f0df; --good: #7ee3a0; --warn: #f2c14e; --bad: #ff6b6b; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  #app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--ink2); font-size: 12px; }
+  header .spacer { flex: 1; }
+  button { background: rgba(255,255,255,0.08); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
+  button:hover { background: rgba(255,255,255,0.14); }
+  main { display: grid; grid-template-columns: 300px 1fr; gap: 0; min-height: 0; }
+  #left { border-right: 1px solid var(--line); display: grid; grid-template-rows: 150px 1fr auto; min-height: 0; }
+  #fly { width: 100%; height: 150px; display: block; }
+  #brain { width: 100%; height: 100%; display: block; background: rgba(0,0,0,0.25); min-height: 0; }
+  #ticker { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; max-height: 150px; overflow: auto; }
+  #ticker div { display: flex; gap: 8px; padding: 2px 0; color: var(--ink2); }
+  #ticker div span:first-child { width: 14px; text-align: center; }
+  #ticker div.ok span:first-child { color: var(--good); } #ticker div.no span:first-child { color: var(--bad); }
+  #ticker div b { color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  #right { overflow: auto; padding: 16px 20px; }
+  #progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin: 6px 0 14px; }
+  #progress div { height: 100%; width: 0; background: var(--seq4); transition: width .1s; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .tile .k { font-size: 11px; color: var(--ink2); text-transform: uppercase; letter-spacing: .04em; }
+  .tile .v { font-size: 24px; font-weight: 600; line-height: 1.2; margin-top: 2px; }
+  .tile .d { font-size: 11px; color: var(--ink3); margin-top: 2px; }
+  h2 { font-size: 13px; color: var(--ink2); margin: 18px 0 8px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .hist { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; align-items: end; height: 110px; padding: 0 0 0 0; }
+  .hist .bar { background: var(--seq3); border-radius: 4px 4px 0 0; position: relative; min-height: 2px; }
+  .hist .bar:hover { background: var(--seq4); }
+  .hist .bar[data-n]:hover::after { content: attr(data-n) " cards"; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #000; color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; white-space: nowrap; margin-bottom: 4px; }
+  .hist-x { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; font-size: 10px; color: var(--ink3); text-align: center; margin-top: 4px; }
+  .hist-x span:nth-child(odd) { visibility: hidden; }
+  .diag { display: flex; gap: 10px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; }
+  .diag .ic { width: 18px; font-weight: 700; } .diag.good .ic { color: var(--good); } .diag.warn .ic { color: var(--warn); } .diag.bad .ic { color: var(--bad); }
+  .diag .t { flex: 1; } .diag .t b { font-weight: 600; } .diag .t small { display: block; color: var(--ink2); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--ink2); font-weight: 500; font-size: 11px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:hover td { background: rgba(255,255,255,0.03); }
+  a { color: var(--seq4); cursor: pointer; }
+  .foot { color: var(--ink3); font-size: 11px; margin-top: 18px; line-height: 1.5; }
+  #report { display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Fly Exam</h1>
+    <div class="sub" id="sub">loading brain…</div>
+    <div class="spacer"></div>
+    <button id="again" style="display:none">Retake</button>
+    <button id="close">Close</button>
+  </header>
+  <main>
+    <div id="left">
+      <canvas id="fly"></canvas>
+      <canvas id="brain"></canvas>
+      <div id="ticker"></div>
+    </div>
+    <div id="right">
+      <div id="phase">Preparing…</div>
+      <div id="progress"><div></div></div>
+      <div id="report"></div>
+    </div>
+  </main>
+</div>
+<script src="vendor/three.min.js"></script>
+<script type="module" src="exam.js"></script>
+</body>
+</html>

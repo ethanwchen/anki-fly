@@ -10,6 +10,24 @@ const py = (msg) => { if (hasPy()) window.pycmd(msg); else console.log('[pycmd]'
 
 const GREEN = [120, 255, 140], RED = [255, 90, 90], YELLOW = [255, 220, 90];
 
+const FACTS = [
+  'My whole nervous system has ~166,700 neurons. You gave me 9,000 of them.',
+  'Each card smells different to me: its note id picks 6 of my 61 glomeruli.',
+  'Only ~5% of my Kenyon cells fire for any one smell. Sparse codes don\'t collide.',
+  'Dopamine doesn\'t excite my neurons here — it rewires Kenyon cell → MBON synapses.',
+  'PAM neurons = reward. PPL1 neurons = punishment. You are my dopamine.',
+  'My APL neuron is GABAergic and quiets my Kenyon cells so memories stay sparse.',
+  'DNp01 is my giant fiber. One spike and I take off in ~5 ms.',
+  'Sugar on my labellum → MN9 → proboscis out. Same wiring as the real fly.',
+  'This wiring is MaleCNS v1.0 (Janelia + Google, 2026), CC BY 4.0.',
+  'My neurons are leaky integrate-and-fire units: τ = 20 ms, threshold −45 mV.',
+  'Glutamatergic MBONs steer me away; GABA/ACh MBONs steer me toward.',
+  'Every synapse adds 0.275 mV × synapse count — the Shiu et al. 2024 model.',
+  'When you press Again, my avoidance is left alone and my approach is weakened.',
+  'I forget slowly: depressed synapses recover toward baseline over hours.',
+  'Real flies remember a punished odor for about a day. I remember until you delete memory.json.',
+];
+
 class AnkiFly {
   constructor() {
     this.cfg = { speed: 1.0, showMemory: true, idleSeconds: 60, sleepSeconds: 240 };
@@ -22,6 +40,9 @@ class AnkiFly {
     this.stats = { spikes: 0, reviews: 0 };
     this.memory = {};   // nid -> {approach, avoid, seen}
     this.dirty = false;
+    this.session = { cards: 0, again: 0, synapses: 0, start: performance.now() };
+    this.factIdx = Math.floor(Math.random() * FACTS.length);
+    this.lastFact = performance.now();
   }
 
   async init() {
@@ -43,6 +64,7 @@ class AnkiFly {
     this.sprite = new FlySprite($('fly'));
     $('count').textContent = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses`;
     window.addEventListener('resize', () => { this.brain.resize(); this.sprite.resize(); });
+    this.wireControls();
     this.lastFrame = performance.now();
     requestAnimationFrame((t) => this.frame(t));
     // background tonic drive so the brain is never fully silent (spontaneous activity)
@@ -50,8 +72,47 @@ class AnkiFly {
     setInterval(() => this.tonic(), 2000);
     setInterval(() => this.save(), 15000);
     // Python may inject pycmd slightly after we load; retry until the bridge is up.
+    for (const ev of (this.pending || [])) this.event(ev);
+    this.pending = null;
     const announce = () => { if (hasPy()) py('fly:ready'); else setTimeout(announce, 100); };
     announce();
+  }
+
+  wireControls() {
+    $('btn-min').onclick = (e) => { e.stopPropagation(); py('fly:minimize'); };
+    $('btn-close').onclick = (e) => { e.stopPropagation(); py('fly:close'); };
+    $('btn-exam').onclick = (e) => { e.stopPropagation(); py('fly:exam'); };
+    $('panel').onclick = () => { if (document.body.classList.contains('mini')) py('fly:restore'); };
+    // hover over the brain: name the nearest neuron
+    const brain = $('brain');
+    brain.addEventListener('mousemove', (e) => {
+      const r = brain.getBoundingClientRect(), d = this.brain.dpr;
+      const x = (e.clientX - r.left) * d, y = (e.clientY - r.top) * d;
+      let best = -1, bd = 36 * d * d;
+      const px = this.brain.px, py_ = this.brain.py;
+      for (let i = 0; i < this.meta.n; i++) { const dx = px[i] - x, dy = py_[i] - y, dd = dx * dx + dy * dy; if (dd < bd) { bd = dd; best = i; } }
+      if (best >= 0) this.setStatus(`${this.meta.type[best] || 'unnamed'} · ${this.meta.nt[best]} · ${this.groupOf(best)}`, true);
+    });
+    brain.addEventListener('mouseleave', () => { this.hoverStatus = null; if (this.statusText) $('status').textContent = this.statusText; });
+  }
+
+  groupOf(i) {
+    if (this.groupIndex === undefined) {
+      this.groupIndex = new Map();
+      for (const [k, v] of Object.entries(this.g)) {
+        if (k === 'PN_glomeruli') for (const [gl, idx] of Object.entries(v)) idx.forEach(j => this.groupIndex.set(j, 'PN ' + gl));
+        else v.forEach(j => this.groupIndex.set(j, k));
+      }
+    }
+    return this.groupIndex.get(i) || 'brain';
+  }
+
+  say(text, ms = 3200) {
+    if (!this.cfg.bubbles) return;
+    const b = $('bubble');
+    b.textContent = text; b.classList.add('show');
+    clearTimeout(this.bubbleTimer);
+    this.bubbleTimer = setTimeout(() => b.classList.remove('show'), ms);
   }
 
   tonic() {
@@ -64,12 +125,20 @@ class AnkiFly {
 
   // ---------- events from Anki ----------
   event(ev) {
+    if (!this.sim) { (this.pending = this.pending || []).push(ev); return; }   // brain still loading
     this.lastEvent = performance.now();
     const g = this.g, sim = this.sim;
     switch (ev.type) {
       case 'config':
         Object.assign(this.cfg, ev.cfg || {});
         $('memory').style.display = this.cfg.showMemory ? '' : 'none';
+        document.body.classList.toggle('mini', !!this.cfg.minimized);
+        this.brain.resize(); this.sprite.resize();
+        break;
+      case 'amnesia':
+        this.memory = {}; this.streak = 0; this.stats = { spikes: 0, reviews: 0 };
+        if (this.sim.plastic) { const P = this.sim.plastic; for (let k = 0; k < P.edgeIdx.length; k++) this.sim.w[P.edgeIdx[k]] = this.sim.w0[P.edgeIdx[k]]; }
+        this.dirty = true; this.updateMemoryBar(); this.say('…who are you?');
         break;
       case 'question': {
         this.currentNid = String(ev.nid);
@@ -80,6 +149,11 @@ class AnkiFly {
         this.wakeIfNeeded();
         this.updateMemoryBar();
         this.setStatus(`sniffing card · glomeruli ${this.currentOdor.join(' ')}`);
+        const m = this.memory[this.currentNid];
+        if (!m) this.say(`*sniff* new smell: ${this.currentOdor.slice(0, 3).join(', ')}…`);
+        else if (this.pref(m) > 0.3) this.say(`oh, this one. ${ev.lapses > 2 ? 'we struggled, but' : ''} I like this one.`);
+        else if (this.pref(m) < -0.3) this.say(`hm. this smell stings. seen ${m.seen}×.`);
+        else this.say(`I've smelled this ${m.seen}× before…`);
         break;
       }
       case 'answer':
@@ -89,24 +163,32 @@ class AnkiFly {
         const ease = ev.ease | 0;
         this.stats.reviews++;
         const kcActive = g.KC.filter(i => sim.elig[i] > 0.2);
+        this.session.cards++;
+        const secs = ev.ms ? (ev.ms / 1000).toFixed(0) + 's' : '';
         if (ease >= 3) {
           sim.stimulate(g.PAM, 60, 400);
           const changed = sim.dopamine(1, ease === 4 ? 1.3 : 1.0);
+          this.session.synapses += changed;
           this.brain.pulse(g.PAM, GREEN);
           this.streak++;
           this.setStatus(`reward · PAM dopamine · ${changed} KC→MBON synapses depressed`);
+          this.say(ease === 4 ? `easy! ${changed} synapses rewired. streak ${this.streak}` : `sweet. PAM fired, ${changed} synapses weaker. ${secs}`);
           if (this.streak > 0 && this.streak % 5 === 0) this.sugar();
         } else if (ease === 1) {
           sim.stimulate(g.PPL1, 60, 400);
           const changed = sim.dopamine(0, 1.0);
+          this.session.synapses += changed; this.session.again++;
           this.brain.pulse(g.PPL1, RED);
           this.streak = 0;
           this.setStatus(`punishment · PPL1 dopamine · ${changed} synapses depressed`);
+          this.say(`ouch. PPL1 fired. I'll approach this smell less. ${secs}`);
         } else {
           sim.stimulate(g.PPL1, 25, 250);
-          sim.dopamine(0, 0.4);
+          const changed = sim.dopamine(0, 0.4);
+          this.session.synapses += changed;
           this.brain.pulse(g.PPL1, YELLOW);
           this.setStatus('hard · weak PPL1 dopamine');
+          this.say(`hard one. a little PPL1. ${secs}`);
         }
         if (this.currentNid) {
           const kcs = new Set(kcActive);
@@ -123,11 +205,15 @@ class AnkiFly {
       }
       case 'wake': this.loom(); break;
       case 'sugar': this.sugar(); break;
-      case 'session_end':
+      case 'session_end': {
         this.clearOdor();
-        this.setStatus('session over · wandering');
+        const s = this.session, mins = ((performance.now() - s.start) / 60000).toFixed(0);
+        this.setStatus(`session over · ${s.cards} cards · ${s.synapses} synapses rewired`);
+        if (s.cards) this.say(`we did ${s.cards} cards in ${mins} min. ${s.again} stung. ${s.synapses} synapses changed.`, 6000);
+        this.session = { cards: 0, again: 0, synapses: 0, start: performance.now() };
         this.save();
         break;
+      }
       case 'loadMemory':
         this.loadMemory(ev.data);
         break;
@@ -213,20 +299,30 @@ class AnkiFly {
     this.sprite.update(wall);
     this.sprite.draw();
     this.brain.draw(wall);
+    if (now - this.lastEvent > 20000 && now - this.lastFact > 45000 && st !== 'sleep' && !document.body.classList.contains('mini')) {
+      this.lastFact = now;
+      this.say(FACTS[this.factIdx++ % FACTS.length], 7000);
+    }
     if ((this.frameNo = (this.frameNo | 0) + 1) % 15 === 0) {
       $('hz').textContent = `${st} · ${(spikes * 1000 / Math.max(1, simMs) / this.meta.n).toFixed(2)} Hz/neuron`;
     }
     requestAnimationFrame((t) => this.frame(t));
   }
 
-  setStatus(s) { $('status').textContent = s; }
+  setStatus(s, hover = false) {
+    if (hover) { this.hoverStatus = s; $('status').textContent = s; return; }
+    this.statusText = s;
+    if (!this.hoverStatus) $('status').textContent = s;
+  }
+
+  // Preference in [-1, 1]: reward depresses avoid drive, punishment depresses approach drive.
+  pref(m) { return Math.max(-1, Math.min(1, ((1 - m.avoid) - (1 - m.approach)) * 2.5)); }
 
   updateMemoryBar() {
     const bar = $('membar'), lab = $('memlabel');
     const m = this.currentNid && this.memory[this.currentNid];
     if (!m) { bar.style.width = '50%'; bar.className = 'neutral'; lab.textContent = 'new card'; return; }
-    // preference: reward depresses avoid drive, punishment depresses approach drive.
-    const pref = Math.max(-1, Math.min(1, ((1 - m.avoid) - (1 - m.approach)) * 2.5));
+    const pref = this.pref(m);
     bar.style.width = `${50 + pref * 50}%`;
     bar.className = pref > 0.05 ? 'good' : (pref < -0.05 ? 'bad' : 'neutral');
     lab.textContent = `fly memory · seen ${m.seen}× · ${pref > 0.3 ? 'likes it' : pref < -0.3 ? 'dreads it' : 'unsure'}`;

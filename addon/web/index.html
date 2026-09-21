@@ -5,12 +5,12 @@
 <title>Anki Fly</title>
 <style>
   :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 10px/1.3 ui-sans-serif, system-ui, -apple-system, sans-serif; color: #cfd3dc; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 10px/1.3 ui-sans-serif, system-ui, -apple-system, sans-serif; color: #cfd3dc; user-select: none; }
   #panel { position: absolute; inset: 0; display: grid; grid-template-columns: 84px 1fr; grid-template-rows: 1fr auto; gap: 0 6px; padding: 5px 8px 5px 4px; box-sizing: border-box;
            background: rgba(18, 20, 28, 0.86); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; backdrop-filter: blur(8px); }
   #fly, #brain { width: 100%; height: 100%; display: block; }
   #fly { grid-row: 1 / span 2; }
-  #brain { border-radius: 6px; background: rgba(0,0,0,0.25); }
+  #brain { border-radius: 6px; background: rgba(0,0,0,0.25); cursor: crosshair; }
   #meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   #status { color: #e8ebf2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #count, #hz { color: #8a90a0; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -18,9 +18,20 @@
   #membar { height: 100%; width: 50%; transition: width .4s; }
   #membar.neutral { background: #6b7280; } #membar.good { background: #7ee3a0; } #membar.bad { background: #ff6b6b; }
   #memlabel { color: #8a90a0; font-size: 9px; }
+  #controls { position: absolute; top: 3px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+  #panel:hover #controls { opacity: 1; }
+  #controls button { background: rgba(255,255,255,0.08); border: 0; color: #cfd3dc; border-radius: 4px; width: 18px; height: 16px; font-size: 10px; line-height: 16px; padding: 0; cursor: pointer; }
+  #controls button:hover { background: rgba(255,255,255,0.2); color: #fff; }
+  #bubble { position: absolute; left: 6px; top: 6px; max-width: 150px; background: #f4f1e8; color: #23252b; border-radius: 10px; padding: 4px 7px; font-size: 9.5px; line-height: 1.25;
+            opacity: 0; transform: translateY(4px); transition: opacity .2s, transform .2s; pointer-events: none; z-index: 2; }
+  #bubble::after { content: ""; position: absolute; left: 18px; bottom: -5px; border: 5px solid transparent; border-top-color: #f4f1e8; border-bottom: 0; }
+  #bubble.show { opacity: 1; transform: none; }
   #dev { display: none; position: absolute; left: 4px; bottom: 2px; gap: 2px; flex-wrap: wrap; }
   #dev button { font-size: 9px; padding: 1px 4px; }
   body[data-state="sleep"] #panel { background: rgba(10, 12, 22, 0.9); }
+  /* minimized: just the fly */
+  body.mini #panel { grid-template-columns: 1fr; padding: 2px; border-radius: 10px; cursor: pointer; }
+  body.mini #brain, body.mini #meta, body.mini #controls, body.mini #bubble { display: none; }
 </style>
 </head>
 <body data-state="idle">
@@ -34,6 +45,12 @@
     <div id="count"></div>
     <div id="hz"></div>
   </div>
+  <div id="controls">
+    <button id="btn-exam" title="Fly Exam: test the fly on your cards (Ctrl+Shift+E)">?</button>
+    <button id="btn-min" title="Minimize">–</button>
+    <button id="btn-close" title="Hide for this session (Ctrl+Shift+F brings it back)">×</button>
+  </div>
+  <div id="bubble"></div>
 </div>
 <div id="dev"></div>
 <script type="module" src="fly.js"></script>
