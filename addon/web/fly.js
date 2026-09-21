@@ -178,7 +178,7 @@ class AnkiFly {
         const kcActive = g.KC.filter(i => sim.elig[i] > 0.2);
         this.session.cards++;
         const secs = ev.ms ? (ev.ms / 1000).toFixed(0) + 's' : '';
-        this.force(ease === 1 ? 'pressAgain' : 'pressGood', 750);
+        this.force(['pressAgain', 'pressHard', 'pressGood', 'pressEasy'][Math.min(4, Math.max(1, ease)) - 1], 750);
         if (ease >= 3) {
           sim.stimulate(g.PAM, 60, 400);
           const changed = sim.dopamine(1, ease === 4 ? 1.3 : 1.0);

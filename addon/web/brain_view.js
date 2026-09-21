@@ -89,7 +89,7 @@ export class BrainView {
     ctx.drawImage(this.staticLayer, 0, 0);
     const decay = Math.exp(-dtMs / 140);
     const r = 1.4 * this.dpr;
-    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalCompositeOperation = 'source-over';
     for (let i = 0; i < n; i++) {
       const g = glow[i];
       if (g < 0.03) { glow[i] = 0; continue; }

@@ -148,7 +148,7 @@ class Exam {
       ['Coverage', pct(coverage), `${studied.length} of ${n} cards ever reviewed`],
       ['True retention (30 d)', pat.true_retention_30d == null ? '—' : pct(pat.true_retention_30d), pat.true_retention_mature_30d == null ? `${pat.true_retention_n_30d || 0} reviews` : `mature ${pct(pat.true_retention_mature_30d)} · ${pat.true_retention_n_30d} reviews`],
       ['Again rate (30 d)', againRate30 == null ? '—' : pct(againRate30), `${pat.reviews_30d || 0} reviews · ${(pat.minutes_30d || 0).toFixed(0)} min`],
-      ['Stability per minute', effic == null ? '—' : `${effic.toFixed(1)} d/min`, 'days of memory stability bought per minute, all time'],
+      ...(heuristic ? [] : [['Stability per minute', effic == null ? '—' : `${effic.toFixed(1)} d/min`, 'days of memory stability bought per minute, all time']]),
       ['Retention per minute', retPerMin == null ? '—' : retPerMin.toFixed(2), 'cards remembered now per minute ever invested'],
       ['Consistency (30 d)', `${pat.days_studied_30d || 0}/${Math.min(30, Math.max(1, Math.ceil(pat.first_review_days_ago || 30)))}`, 'days with at least one review'],
       ['Overdue', `${pat.overdue || 0}${pat.review_cards ? ' / ' + pat.review_cards : ''}`, 'review cards past due'],
