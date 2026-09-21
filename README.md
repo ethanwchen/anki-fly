@@ -39,6 +39,10 @@ The fly sits an exam on your deck:
 - **Two real brains.** The default fly runs the male MaleCNS connectome; switch to the female fly and it
   runs the FlyWire FAFB connectome instead (10,322 neurons in the pack, a genuinely different brain, with
   its own memory file).
+- **Friends** (optional, front page only): a panel under the deck list with your fly code and your
+  friends' flies, a green dot when they're studying right now and what their fly is doing. Needs a
+  friends server (`backend/`, a small Cloudflare Worker you deploy; set `friends_server` in the
+  config). Only name, species, costume, mood and aggregate counts are shared, never cards or decks.
 - **Minimize / hide.** Hover the widget for `–` (collapse to a tiny fly) and `×` (hide for this
   session). `Ctrl+Shift+F` toggles it. Options in the add-on config.
 

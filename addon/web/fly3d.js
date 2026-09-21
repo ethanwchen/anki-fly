@@ -477,10 +477,11 @@ export class FlySprite {
       if (!fem) { attr.array.set(P.col0); attr.needsUpdate = true; continue; }
       const bname = this.bodies[P.body].name, kseg = bname === 'abdomen' ? 1 : +bname.split('_')[1];
       const pos = P.mesh.geometry.attributes.position.array, L = this.abdLen[bname] || 0.02, n = attr.count;
-      const TAN = [0.66, 0.47, 0.25], DARK = [0.10, 0.06, 0.035], BELLY = [0.74, 0.58, 0.36], base = P.mat === 'lower' ? BELLY : TAN;
+      const TAN = [0.66, 0.47, 0.25], DARK = [0.10, 0.06, 0.035], BELLY = [0.74, 0.58, 0.36];
       for (let i = 0; i < n; i++) {
+        const lower = P.mat === 'lower' || i >= (P.lowerFrom ?? Infinity), base = lower ? BELLY : TAN;
         let band = clamp(((pos[i * 3 + 1] / L) - 0.45) / 0.15, 0, 1);
-        if (P.mat === 'lower') band *= 0.35;
+        if (lower) band *= 0.35;
         if (kseg === 1) band *= 0.5;
         if (kseg === 7) band = clamp((pos[i * 3 + 1] / L - 0.6) / 0.2, 0, 1) * 0.8;   // dark only at the very tip
         for (let c = 0; c < 3; c++) attr.array[i * 3 + c] = Math.round(Math.pow(base[c] * (1 - band) + DARK[c] * band, 2.2) * 255);
@@ -767,6 +768,7 @@ export class FlySprite {
     }
     this.byName = {}; B.forEach((b, i) => this.byName[b.name] = this.bodies[i]);
 
+    this.mergeStaticParts();
     this.calibrateLegs();
     // rest pose, measure, normalize so that body length = 1 and feet at y = 0
     this.applyJoints();
@@ -790,6 +792,56 @@ export class FlySprite {
     if (this.costume) this.setCostume(this.costume);
     this.ready = true;
     this.layout();
+  }
+
+  // Draw-call reduction: the distal tarsal segments + claw never articulate, and the abdominal 'lower' plates share the
+  // vertex-colour material with the tergites, so bake them into their parent's geometry (88 -> ~57 draw calls per fly).
+  mergeStaticParts() {
+    this.applyJoints(); this.root.updateWorldMatrix(true, true);
+    const groups = {};   // target body name -> meshes to fold in
+    const CLAW = [7, 2, 1];   // linear-space bytes for the dark brown claw
+    for (const o of this.bodies) {
+      const m = o.name.match(/^(tarsus[234]|claw)_(T\d)_(left|right)$/);
+      const target = m ? `tarsus_${m[2]}_${m[3]}` : (o.name.startsWith('abdomen') ? o.name : null);
+      if (!target) continue;
+      for (const ch of o.children.slice()) {
+        if (!ch.isMesh) continue;
+        if (o.name === target && ch.name.endsWith(':body')) continue;      // the abdomen tergite is the merge target itself
+        if (o.name === target && !ch.name.endsWith(':lower')) continue;
+        (groups[target] = groups[target] || []).push(ch);
+      }
+    }
+    const inv = new THREE.Matrix4(), M = new THREE.Matrix4();
+    for (const tname in groups) {
+      const T = this.byName[tname];
+      const base = T.children.find(c => c.isMesh && c.name.endsWith(':body'));
+      const list = [base, ...groups[tname]];
+      let nv = 0, ni = 0;
+      for (const mesh of list) { nv += mesh.geometry.attributes.position.count; ni += mesh.geometry.index.count; }
+      const pos = new Float32Array(nv * 3), col = new Uint8Array(nv * 3), idx = new Uint32Array(ni);
+      let vo = 0, io = 0;
+      const baseCount = base.geometry.attributes.position.count;
+      inv.copy(T.matrixWorld).invert();
+      for (const mesh of list) {
+        const g = mesh.geometry, P = g.attributes.position, C = g.attributes.color, n = P.count;
+        M.multiplyMatrices(inv, mesh.matrixWorld);
+        const v = new THREE.Vector3();
+        for (let i = 0; i < n; i++) {
+          v.fromBufferAttribute(P, i).applyMatrix4(M); pos.set([v.x, v.y, v.z], (vo + i) * 3);
+          if (C) col.set([C.array[i * 3], C.array[i * 3 + 1], C.array[i * 3 + 2]], (vo + i) * 3); else col.set(CLAW, (vo + i) * 3);
+        }
+        const I = g.index.array; for (let k = 0; k < I.length; k++) idx[io + k] = I[k] + vo;
+        vo += n; io += I.length;
+        if (mesh !== base) { mesh.parent.remove(mesh); if (this.abdParts) this.abdParts = this.abdParts.filter(p => p.mesh !== mesh); }
+        g.dispose();
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3, true));
+      g.setIndex(new THREE.BufferAttribute(idx, 1)); g.computeVertexNormals();
+      base.geometry = g; base.material = this.M.bodyVC;
+      if (this.abdParts) for (const p of this.abdParts) if (p.mesh === base) { p.col0 = col.slice(); p.lowerFrom = baseCount; }
+    }
   }
 
   // spherical UVs per eye so the hex normal map wraps each compound eye
@@ -904,6 +956,8 @@ export class FlySprite {
 
   draw() {
     if (!this.ready) { this.renderer.clear(); return; }
+    const cw = this.canvas.clientWidth, ch = this.canvas.clientHeight;
+    if (cw && ch && (cw !== this.w || ch !== this.h)) { this.resize(); this.update(0); }   // layout changed under us
     if (!this.needsRender) return;          // 'still' renders once, then idles
     this.renderer.render(this.scene, this.camera);
     this.needsRender = this.state !== 'still';
