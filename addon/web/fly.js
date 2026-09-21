@@ -59,7 +59,7 @@ const FACTS = [
 
 class AnkiFly {
   constructor() {
-    this.cfg = { speed: 1.0, showMemory: true, idleSeconds: 60, sleepSeconds: 240 };
+    this.cfg = { speed: 1.0, showMemory: true, idleSeconds: 60, sleepSeconds: 240, pacing: true };
     this.lastEvent = performance.now();
     this.streak = 0;
     this.currentNid = null;
@@ -121,6 +121,7 @@ class AnkiFly {
     item('m-exam', () => py('fly:exam'));
     item('m-min', () => py('fly:minimize'));
     item('m-close', () => py('fly:close'));
+    $('leech').onclick = (e) => { e.stopPropagation(); py('fly:leeches:' + this.leeches().join(',')); };
     $('panel').onclick = () => { if (document.body.classList.contains('mini')) py('fly:restore'); };
     // hover over the brain: name the nearest neuron
     const brain = $('brain');
@@ -223,6 +224,7 @@ class AnkiFly {
         const kcActive = g.KC.filter(i => sim.elig[i] > 0.2);
         this.session.cards++;
         const secs = ev.ms ? (ev.ms / 1000).toFixed(0) + 's' : '';
+        this.pacing(ease, ev.ms || 0);
         // mood: recent run of answers
         this.againRun = ease === 1 ? (this.againRun || 0) + 1 : 0;
         this.easyRun = ease === 4 ? (this.easyRun || 0) + 1 : 0;
@@ -247,7 +249,8 @@ class AnkiFly {
           this.brain.pulse(g.PPL1, RED);
           const had = this.streak; this.streak = 0;
           this.setStatus(`that stung · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PPL1 punishment dopamine depressed KC→MBON approach synapses');
-          if (this.againRun >= 3) { setTimeout(() => this.force('crashout', 3000), 800); this.sulkUntil = performance.now() + 45000; this.maybeSay('crashout', {}, { every: 1, force: true, ms: 3500 }); }
+          if (this.againRun >= 7 && (this.againRun - 7) % 5 === 0) { setTimeout(() => this.force('crashout', 3000), 800); this.sulkUntil = performance.now() + 60000; this.maybeSay('crashout', {}, { every: 1, force: true, ms: 3500 }); }
+          else if (this.againRun === 4) { this.sulkUntil = performance.now() + 30000; this.maybeSay('sulk', {}, { every: 1, force: true }); }
           else if (had >= 3) this.maybeSay('streakBroken', {}, { every: 1, force: true }); else this.maybeSay('again', {}, { every: 2 });
         } else {
           sim.stimulate(g.PPL1, 25, 250);
@@ -269,6 +272,7 @@ class AnkiFly {
         this.clearOdor();
         this.updateMemoryBar();
         this.updateSession();
+        if (this.session.cards % 10 === 0) this.leechCheck();
         break;
       }
       case 'wake': this.loom(); break;
@@ -423,6 +427,43 @@ class AnkiFly {
     lab.textContent = `fly memory · seen ${m.seen}× · ${pref > 0.3 ? 'likes it' : pref < -0.3 ? 'dreads it' : 'unsure'}`;
   }
 
+  // ---------- session pacing (fatigue signal) ----------
+  // Compare the last 20 answers with the first 20 of the session. When answers get both slower and
+  // wronger, retrieval practice is failing more than it succeeds; suggest a break, at most every 15 min.
+  pacing(ease, ms) {
+    if (!this.cfg.pacing) return;
+    const h = this.answers = this.answers || [];
+    h.push({ ease, ms: Math.min(ms, 60000) });
+    if (h.length < 40) return;
+    const stats = (arr) => ({ secs: arr.reduce((a, b) => a + b.ms, 0) / arr.length / 1000, again: arr.filter(a => a.ease === 1).length / arr.length });
+    const base = stats(h.slice(0, 20)), now = stats(h.slice(-20));
+    const slower = base.secs > 0 && now.secs / base.secs, wronger = now.again - base.again;
+    const tired = (slower >= 1.6 && wronger >= 0.05) || wronger >= 0.2 || (slower >= 2 && now.secs > 8);
+    const t = performance.now();
+    if (tired && t - (this.lastNudge ?? -Infinity) > 15 * 60000) {
+      this.lastNudge = t;
+      const why = wronger >= 0.2 ? `${Math.round(now.again * 100)}% Again on the last 20 cards` : `last 20 cards took ${slower.toFixed(1)}× longer`;
+      this.say(`${why}. break?`, 8000);
+      this.setStatus(`getting tired · ${why}`, false, 'session pacing: last 20 answers vs. the first 20 of this session');
+      this.force('groom', 2500);
+      setTimeout(() => this.force('sleepDesk', 4000), 2600);
+    }
+  }
+
+  // ---------- leech radar ----------
+  // Cards the fly dreads (repeatedly punished) are usually your leeches.
+  leeches() {
+    return Object.entries(this.memory).filter(([, m]) => m.seen >= 4 && this.pref(m) < -0.4).map(([nid]) => nid);
+  }
+
+  leechCheck() {
+    const l = this.leeches();
+    $('leech').hidden = l.length === 0;
+    $('leech').textContent = `${l.length} dreaded`;
+    $('leech').title = 'cards the fly dreads: probably your leeches. Click to open them in the browser.';
+    if (l.length >= 3 && l.length !== this.lastLeechCount && !this.cfg.focus) { this.lastLeechCount = l.length; this.say(`${l.length} cards keep stinging me. click "dreaded" to see them.`, 7000); }
+  }
+
   // ---------- history replay ----------
   async syncHistory(notes, reviews) {
     const sim = this.sim, g = this.g, total = notes.length;
@@ -476,6 +517,7 @@ class AnkiFly {
     this.streak = data.streak || 0;
     this.setStatus(`remembers ${Object.keys(this.memory).length} of your cards`);
     this.updateSession();
+    this.leechCheck();
   }
 }
 

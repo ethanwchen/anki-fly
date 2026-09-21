@@ -198,7 +198,7 @@ export class FlySprite {
     }
 
     this.resize();
-    loadFlyBin(new URL('vendor/fly.bin', import.meta.url)).then(d => this.build(d)).catch(e => { this.failed = true; console.error('[fly3d]', e); });
+    loadFlyBin(new URL('vendor/fly.bin', import.meta.url)).then(d => this.build(d)).catch(e => { this.failed = true; console.warn('[fly3d]', e); });
   }
 
   // ---------- scenes ----------

@@ -26,6 +26,8 @@
   #foot { display: flex; align-items: end; justify-content: space-between; gap: 6px; color: var(--ink3); font-size: 9.5px; min-width: 0; padding-bottom: 2px; line-height: 1.2; }
   #session { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #hz { white-space: nowrap; }
+  #leech { background: rgba(255,123,123,0.14); color: var(--bad); border: 0; border-radius: 5px; padding: 1px 6px; font: inherit; font-size: 9.5px; cursor: pointer; white-space: nowrap; }
+  #leech:hover { background: rgba(255,123,123,0.28); }
   /* gear + menu */
   #gear { position: absolute; top: 6px; right: 8px; width: 22px; height: 22px; border-radius: 6px; border: 0; background: rgba(255,255,255,0.06);
     color: var(--ink2); cursor: pointer; font-size: 13px; line-height: 22px; padding: 0; opacity: .55; transition: opacity .15s, background .15s; }
@@ -64,7 +66,7 @@
     <div id="legend"><span style="--c:#50dcff">ACh</span><span style="--c:#ff6ebe">GABA</span><span style="--c:#ffbe46">Glu</span><span style="--c:#78ff8c">dopamine</span></div>
     <div id="status">waking up…</div>
     <div id="memrow"><div id="memory"><div id="membar" class="neutral"></div></div><div id="memlabel">fly memory</div></div>
-    <div id="foot"><div id="session"></div><div id="hz"></div></div>
+    <div id="foot"><div id="session"></div><button id="leech" hidden></button><div id="hz"></div></div>
   </div>
   <button id="gear" title="Fly options" aria-label="Fly options" aria-haspopup="menu">⚙</button>
   <div id="menu" role="menu">

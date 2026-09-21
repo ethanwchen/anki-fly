@@ -27,6 +27,10 @@ The fly sits an exam on your deck:
   gauge), with the fly's connectome memory blended in at 25% (the fun part), plus true retention,
   again rate, stability-per-minute, consistency and backlog from your review log, and a diagnosis
   with the learning-science reason for each flag.
+- **Leech radar.** Cards the fly keeps getting punished on are probably your leeches; a "dreaded" chip
+  on the widget opens them in the browser.
+- **Pacing nudge.** When your last 20 answers get slower and wronger than the start of the session, the
+  fly suggests a break (at most every 15 minutes; `pacing_nudges` in config).
 - **Sync with your history.** Tools → Drosophil-Anki → Sync replays your whole review log into the fly's
   synapses (aggregated per note), so a year of Anki becomes a year of fly memories in seconds.
 - **Minimize / hide.** Hover the widget for `–` (collapse to a tiny fly) and `×` (hide for this

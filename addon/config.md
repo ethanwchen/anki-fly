@@ -9,6 +9,7 @@ A fruit fly whose brain is a real slice of the MaleCNS connectome, studying alon
 - `show_outside_review`: keep the fly visible on the deck list / overview too.
 - `show_memory_bar`: show the "fly memory" bar for the current card.
 - `thought_bubbles`: the fly comments on what just happened in its brain.
+- `pacing_nudges`: when your last 20 answers get slower and wronger than the start of the session, the fly suggests a break (at most every 15 minutes).
 - `focus_mode`: Deep Focus — no bubbles, no facts, no motion; the fly just quietly studies. `Ctrl+Shift+D` toggles it.
 - `sim_speed`: brain time per wall-clock time (1.0 = real time).
 - `idle_seconds`: seconds without a review before the fly starts grooming / wandering.

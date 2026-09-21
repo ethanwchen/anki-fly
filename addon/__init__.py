@@ -147,6 +147,7 @@ class FlyWidget(QObject):
             "minimized": self.minimized,
             "bubbles": bool(self.cfg.get("thought_bubbles", True)),
             "focus": self.focus,
+            "pacing": bool(self.cfg.get("pacing_nudges", True)),
         }})
 
     def eventFilter(self, obj, evt) -> bool:  # noqa: N802
@@ -268,6 +269,13 @@ class FlyWidget(QObject):
             return {"ok": True}
         if cmd == "fly:focus:off":
             self.set_focus(False)
+            return {"ok": True}
+        if cmd.startswith("fly:leeches:"):
+            nids = [n for n in cmd[len("fly:leeches:"):].split(",") if n.isdigit()]
+            if nids and mw.col:
+                from aqt import dialogs
+                b = dialogs.open("Browser", mw)
+                b.search_for("nid:" + ",".join(nids[:500]))
             return {"ok": True}
         if cmd == "fly:close":
             self.closed_this_session = True
