@@ -1,4 +1,4 @@
-AnkiWeb listing for Drosophil-Anki (v0.2.1)
+AnkiWeb listing for Drosophil-Anki (v0.2.2)
 ============================================
 
 Title (under 80 chars):  Drosophil-Anki: a fruit fly with a real brain studies with you
@@ -37,11 +37,11 @@ Paste everything between the lines into the Description box (Markdown).
 
 **Not distracting**: Deep Focus (Ctrl+Shift+D) keeps it still and silent; minimize, resize or hide it (Ctrl+Shift+F). A gentle nudge to take a break when your answers get slower and wronger, and a chip pointing at the cards you keep missing.
 
-**Install**: download, restart Anki, start reviewing. Anki 25.02 or newer on desktop (Mac, Windows, Linux). Tested most on macOS; please report issues on GitHub rather than in reviews: https://github.com/ethanwchen/anki-fly/issues
+**Install**: Tools > Add-ons > Get Add-ons, code `888374074`, restart Anki, start reviewing. Anki 25.02 or newer on desktop (Mac, Windows, Linux). Tested most on macOS; please report issues on GitHub rather than in reviews: https://github.com/ethanwchen/anki-fly/issues
 
 Open source (MIT): https://github.com/ethanwchen/anki-fly. MaleCNS data CC BY 4.0; FlyWire data CC BY-NC 4.0 (this add-on is free and non-commercial); neuron model after Shiu et al. 2024; fly body from the flybody project (Apache-2.0); three.js (MIT).
 
 ----------------------------------------------------------------------------------------------------
 
 Changelog line for this release:
-v0.2.1: 3D fly with desk scenes and moods, 40 costumes with a Wardrobe, male and female flies with two connectomes, levels and team tags, weekly fly race with profiles and privacy controls, quieter bubbles, resizable widget, many robustness fixes.
+v0.2.2: 3D fly with desk scenes and moods, 40 costumes with a Wardrobe, male and female flies with two connectomes, levels and team tags, weekly fly race with profiles and privacy controls, quieter bubbles, resizable widget, many robustness fixes.

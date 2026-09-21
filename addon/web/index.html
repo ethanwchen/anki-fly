@@ -13,15 +13,15 @@
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); }
   body { font-size: 2.75rem; line-height: 1.35; }
-  #panel { position: absolute; inset: 0; display: grid; grid-template-columns: 37.5rem 1fr; grid-template-rows: 1fr; gap: 0 2rem;
+  #panel { position: absolute; inset: 0; display: grid; grid-template-columns: 37.5rem minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 0 2rem;
     padding: 2rem 2.5rem 2.5rem 1.5rem; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 3.5rem;
     backdrop-filter: blur(10px); box-shadow: 0 1.5rem 6rem rgba(0,0,0,0.35); }
-  #fly { width: 100%; height: 100%; display: block; border-radius: 2.5rem; }
+  #fly { width: 100%; height: 100%; min-height: 0; min-width: 0; display: block; border-radius: 2.5rem; }
   #right { display: grid; grid-template-rows: 1fr auto auto auto auto; gap: 1rem; min-width: 0; min-height: 0; }
   #brain { width: 100%; height: 100%; min-height: 0; display: block; border-radius: 2rem; background: rgba(0,0,0,0.28); cursor: crosshair; }
-  #legend { display: flex; gap: 2rem; font-size: 2.25rem; color: var(--ink3); padding: 0 .5rem; }
+  #legend { display: flex; flex-wrap: nowrap; gap: 2rem; font-size: 2.25rem; color: var(--ink3); padding: 0 .5rem; white-space: nowrap; }
   #legend span::before { content: ""; display: inline-block; width: 1.5rem; height: 1.5rem; border-radius: 50%; margin-right: .75rem; vertical-align: 0; background: var(--c); }
-  #legend .count { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } #legend .count::before { display: none; }
+  #legend .count { margin-left: auto; flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; } #legend .count::before { display: none; }
   #status { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 2.75rem; }
   #memrow { display: grid; grid-template-columns: 1fr auto; gap: 1.5rem; align-items: center; }
   #memory { height: 1.25rem; background: rgba(255,255,255,0.09); border-radius: .75rem; overflow: hidden; }

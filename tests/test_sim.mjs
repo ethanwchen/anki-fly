@@ -83,6 +83,7 @@ if (existsSync(real)) {
     const meta = JSON.parse(readFileSync(new URL('../addon/web/data/meta.json', import.meta.url)));
     const g = parseGraph(readFileSync(real).buffer.slice(0));
     const sim = new Sim(g);
+    for (const i of meta.groups.APL_DPM) sim.noQuench[i] = 1;
     assert.equal(g.n, meta.n);
     // baseline: nothing should fire without input
     const t0 = performance.now();

@@ -353,7 +353,7 @@ class FlyWidget(QObject):
                 info = json.loads(cmd[len("fly:wardrobe:"):] or "{}")
             except ValueError:
                 info = {}
-            exam.open_wardrobe(str(info.get("costume", "none")), info.get("stats") or {})
+            mw.progress.single_shot(0, lambda: exam.open_wardrobe(str(info.get("costume", "none")), info.get("stats") or {}))
             return {"ok": True}
         if cmd.startswith("fly:mood:"):
             fr = getattr(mw, "_anki_fly_friends", None)
@@ -361,10 +361,10 @@ class FlyWidget(QObject):
                 fr.set_mood(cmd[len("fly:mood:"):][:20])
             return {"ok": True}
         if cmd == "fly:team":
-            self.set_team()
+            mw.progress.single_shot(0, self.set_team)
             return {"ok": True}
         if cmd == "fly:rename":
-            self.rename()
+            mw.progress.single_shot(0, self.rename)
             return {"ok": True}
         if cmd.startswith("fly:leeches:"):
             nids = [n for n in cmd[len("fly:leeches:"):].split(",") if n.isdigit()]
@@ -378,13 +378,17 @@ class FlyWidget(QObject):
             self.update_visibility()
             return {"ok": True}
         if cmd == "fly:exam":
-            exam.open_exam_dialog()
+            mw.progress.single_shot(0, exam.open_exam_dialog)     # modal dialogs must not run inside the bridge callback
             return {"ok": True}
         if cmd.startswith("fly:save:"):
             payload = cmd[len("fly:save:"):]
             try:
                 os.makedirs(USER_FILES, exist_ok=True)
-                path = memory_path()
+                try:
+                    which = json.loads(payload).get("sex")
+                except ValueError:
+                    which = None
+                path = MEMORY_PATH_F if which == "female" else MEMORY_PATH if which == "male" else memory_path()
                 tmp = path + ".tmp"
                 with open(tmp, "w", encoding="utf-8") as f:
                     f.write(payload)
@@ -407,8 +411,7 @@ class FlyWidget(QObject):
     @safe
     def load_memory(self) -> None:
         data = read_memory()
-        if data:
-            self.send({"type": "loadMemory", "data": data})
+        self.send({"type": "loadMemory", "data": data or {"v": 1, "memory": {}}})
 
     # ---- review events
     @safe
@@ -461,20 +464,20 @@ def setup() -> None:
     toggle = QAction("Show / hide the fly", mw)
     toggle.setShortcut(QKeySequence("Ctrl+Shift+F"))
     toggle.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
-    toggle.triggered.connect(fly.toggle_visible)
+    toggle.triggered.connect(lambda *_: fly.toggle_visible())
     menu.addAction(toggle)
     focus = QAction("Deep Focus (fly stays quiet)", mw)
     focus.setShortcut(QKeySequence("Ctrl+Shift+D"))
     focus.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
-    focus.triggered.connect(fly.toggle_focus)
+    focus.triggered.connect(lambda *_: fly.toggle_focus())
     menu.addAction(focus)
     test = QAction("Fly Exam: test the fly on your cards…", mw)
     test.setShortcut(QKeySequence("Ctrl+Shift+E"))
     test.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
-    test.triggered.connect(exam.open_exam_dialog)
+    test.triggered.connect(lambda *_: exam.open_exam_dialog())
     menu.addAction(test)
     sync = QAction("Sync the fly with my review history…", mw)
-    sync.triggered.connect(fly.sync_history)
+    sync.triggered.connect(lambda *_: fly.sync_history())
     menu.addAction(sync)
     amnesia = QAction("Give the fly amnesia (reset its memory)", mw)
     amnesia.triggered.connect(lambda: _amnesia(fly))
@@ -486,13 +489,13 @@ def setup() -> None:
     fr = friends.setup()
     menu.addSeparator()
     code = QAction("Friends: show my fly code", mw)
-    code.triggered.connect(fr.show_code)
+    code.triggered.connect(lambda *_: fr.show_code())
     menu.addAction(code)
     add = QAction("Friends: add a friend…", mw)
-    add.triggered.connect(fr.add_friend)
+    add.triggered.connect(lambda *_: fr.add_friend())
     menu.addAction(add)
     leave = QAction("Friends: leave", mw)
-    leave.triggered.connect(fr.leave)
+    leave.triggered.connect(lambda *_: fr.leave())
     menu.addAction(leave)
 
 

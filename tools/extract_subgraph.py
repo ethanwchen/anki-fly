@@ -210,6 +210,7 @@ def main():
     random.shuffle(sil)
     add(sil[:SILHOUETTE_N], "background")
     bg_ids = set(groups["background"])
+    lc4_ids = set(groups.get("LC4", ()))
     print(f"total neurons: {len(sel)}")
 
     # transmitter fixes for datasets with patchy predictions (see DATASETS[...]["fill_nt"/"force_nt"])
@@ -233,6 +234,11 @@ def main():
             f"RETURN a.bodyId, b.bodyId, c.weight", f"edges_{MIN_W}_{hashlib.md5(str(chunk).encode()).hexdigest()[:10]}")
         for a, b, w in res["data"]:
             if a == b and CFG["drop_autapses"]:
+                continue
+            # LC4 -> LC4 recurrence: in the whole brain it is held in check by inhibition we don't include; in this
+            # subgraph it makes the looming circuit lock up permanently, so the visual projection neurons are
+            # feed-forward here.
+            if a in lc4_ids and b in lc4_ids:
                 continue
             if b in index and a not in bg_ids:   # silhouette neurons are open-loop: driven by the circuit, never feed back
                 edges.append((index[a], index[b], w))

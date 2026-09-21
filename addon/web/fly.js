@@ -91,6 +91,7 @@ class AnkiFly {
     if (meta.plastic) {
       const P = meta.plastic;
       this.sim.setPlasticEdges(Int32Array.from(P.edge), Int32Array.from(P.pre), Int32Array.from(P.post), Uint8Array.from(P.cls));
+    for (const i of (meta.groups.APL_DPM || [])) this.sim.noQuench[i] = 1;
     }
     this.kcSet = new Set(this.g.KC);
     meta.denseGroups = this.kcSet;
@@ -104,6 +105,7 @@ class AnkiFly {
     $('count').textContent = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses`;
     this.updateSession();
     window.addEventListener('resize', () => { try { this.brain.resize(); this.sprite.resize(); } catch (e) { console.warn(e); } });
+    if (window.ResizeObserver) new ResizeObserver(() => { try { this.brain.resize(); this.sprite.resize(); } catch {} }).observe($('brain'));
     this.wireControls();
     this.lastFrame = performance.now();
     requestAnimationFrame((t) => this.frame(t));
@@ -232,7 +234,7 @@ class AnkiFly {
       case 'amnesia':
         this.memory = {}; this.streak = 0; this.stats = { spikes: 0, reviews: 0 };
         if (this.sim.plastic) { const P = this.sim.plastic; for (let k = 0; k < P.edgeIdx.length; k++) this.sim.w[P.edgeIdx[k]] = this.sim.w0[P.edgeIdx[k]]; }
-        this.dirty = true; this.updateMemoryBar(); this.maybeSay('amnesia', {}, { every: 1, force: true });
+        this.dirty = true; this.updateMemoryBar(); this.updateSession(); this.setStatus('memory wiped'); this.maybeSay('amnesia', {}, { every: 1, force: true });
         break;
       case 'question': {
         this.currentNid = String(ev.nid);
@@ -302,15 +304,18 @@ class AnkiFly {
           const kcs = new Set(kcActive);
           const m = this.memory[this.currentNid] || { seen: 0 };
           m.seen++;
-          m.approach = sim.memoryDrive(kcs, 0);
-          m.avoid = sim.memoryDrive(kcs, 1);
+          // relative to the whole-network baseline, so earlier rewards on overlapping cells don't make a
+          // brand-new card look "known"
+          const base0 = sim.memoryDrive(this.kcSet, 0), base1 = sim.memoryDrive(this.kcSet, 1);
+          m.approach = sim.memoryDrive(kcs, 0) - base0 + 1;
+          m.avoid = sim.memoryDrive(kcs, 1) - base1 + 1;
           this.memory[this.currentNid] = m;
           this.dirty = true;
         }
         this.clearOdor();
         this.updateMemoryBar();
         this.updateSession();
-        if (this.session.cards % 10 === 0) this.leechCheck();
+        if (ease === 1 || this.session.cards % 10 === 0) this.leechCheck();
         this.bump();                                  // last, so a level-up isn't clobbered by the press animation
         break;
       }
@@ -551,6 +556,7 @@ class AnkiFly {
       this.say(`${why}. break?`, 8000);
       this.setStatus(`getting tired · ${why}`, false, 'session pacing: last 20 answers vs. the first 20 of this session');
       this.force('groom', 2500);
+      this.saidSleepy = true;
       setTimeout(() => this.force('sleepDesk', 4000), 2600);
     }
   }
@@ -558,7 +564,7 @@ class AnkiFly {
   // ---------- leech radar ----------
   // Cards the fly dreads (repeatedly punished) are usually your leeches.
   leeches() {
-    return Object.entries(this.memory).filter(([, m]) => m.seen >= 4 && this.pref(m) < -0.4).map(([nid]) => nid);
+    return Object.entries(this.memory).filter(([, m]) => m.seen >= 4 && this.pref(m) < -0.3).map(([nid]) => nid);
   }
 
   leechCheck() {
@@ -608,11 +614,12 @@ class AnkiFly {
   _save() {
     const P = this.sim.plastic, w = [];
     for (let k = 0; k < P.edgeIdx.length; k++) w.push(+(this.sim.w[P.edgeIdx[k]] / this.sim.w0[P.edgeIdx[k]]).toFixed(3));
-    py('fly:save:' + JSON.stringify({ v: 1, ratio: w, memory: this.memory, stats: this.stats, streak: this.streak, progress: this.progress }));
+    py('fly:save:' + JSON.stringify({ v: 1, sex: this.sex, ratio: w, memory: this.memory, stats: this.stats, streak: this.streak, progress: this.progress }));
     this.dirty = false;
   }
   loadMemory(data) {
     if (!data || data.v !== 1) return;
+    if (data.sex && data.sex !== this.sex) return;          // a file from the other brain: leave it alone
     const P = this.sim.plastic;
     if (P && Array.isArray(data.ratio) && data.ratio.length === P.edgeIdx.length) {
       for (let k = 0; k < P.edgeIdx.length; k++) this.sim.w[P.edgeIdx[k]] = this.sim.w0[P.edgeIdx[k]] * data.ratio[k];

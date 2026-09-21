@@ -21,6 +21,10 @@ export const DEFAULT_PARAMS = {
   tauElig: 3000.0,  // ms; KC eligibility trace for dopamine-gated plasticity
   eta: 0.15,        // fraction of KC->MBON weight removed per dopamine-gated event
   wMin: 0.05,       // floor as fraction of original weight
+  seizeHz: 240,     // a neuron sustaining more than this (smoothed) is quenched: our subgraph lacks the
+  quenchMs: 120,    // inhibition that keeps real recurrent loops (LC4, feeding interneurons) in check
+  hotHz: 90,        // ...and a neuron firing above this for longer than hotMs with no external drive is a
+  hotMs: 2500,      // self-sustaining loop, which we also quench (real circuits adapt; ours can't)
 };
 
 export class Sim {
@@ -52,6 +56,8 @@ export class Sim {
     // Plasticity
     this.elig = new Float32Array(this.n);
     this.plastic = null; // { edgeIdx: Int32Array, pre: Int32Array, post: Int32Array, cls: Uint8Array }
+    this.noQuench = new Uint8Array(this.n);   // graded neurons (APL/DPM) legitimately sustain high rates
+    this.hotFor = new Float32Array(this.n);   // ms spent above hotHz without external drive
     this._rng = mulberry32(12345);
   }
 
@@ -142,15 +148,21 @@ export class Sim {
     const eligDecay = Math.exp(-dt / tauElig);
     const rDecay = Math.exp(-dt / this.rateTau);
     const rate = this.rate, elig = this.elig;
+    const hotHz = this.p.hotHz, hotMs = this.p.hotMs, hotFor = this.hotFor, noQ = this.noQuench;
     for (let i = 0; i < n; i++) {
       spiked[i] = 0;
       elig[i] *= eligDecay;
       rate[i] *= rDecay;
+      if (rate[i] > hotHz && extRate[i] === 0 && !noQ[i]) {
+        hotFor[i] += dt;
+        if (hotFor[i] > hotMs) { hotFor[i] = 0; g[i] = 0; v[i] = vReset; refracUntil[i] = t + this.p.quenchMs * 3; rate[i] = 0; continue; }
+      } else hotFor[i] = 0;
       if (t < refracUntil[i]) { v[i] = vReset; continue; }   // v and g frozen while refractory (Brian2 "unless refractory")
       let vi = v[i] + (vRest - v[i] + g[i]) * decay;
       g[i] *= gDecay;
       if (vi >= vThresh) {
         vi = vReset;
+        if (rate[i] > this.p.seizeHz && !this.noQuench[i]) { g[i] = 0; refracUntil[i] = t + this.p.quenchMs; v[i] = vReset; continue; }
         refracUntil[i] = t + refrac;
         spiked[i] = 1;
         spikes.push(i);

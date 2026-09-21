@@ -51,10 +51,13 @@ The fly sits an exam on your deck:
 - **Minimize / hide.** Hover the widget for `–` (collapse to a tiny fly) and `×` (hide for this
   session). `Ctrl+Shift+F` toggles it. Options in the add-on config.
 
-## Install (for testing)
+## Install
 
-    ./build.sh                       # -> dist/anki-fly.ankiaddon
-    # Anki → Tools → Add-ons → Install from file… → dist/anki-fly.ankiaddon → restart Anki
+In Anki: **Tools → Add-ons → Get Add-ons…**, paste **`888374074`**, restart Anki.
+AnkiWeb page: https://ankiweb.net/shared/info/888374074
+
+Or download `anki-fly.ankiaddon` from the [latest release](https://github.com/ethanwchen/anki-fly/releases/latest)
+and double-click it. Developers: `./build.sh` builds it from this repo.
 
 Or symlink `addon/` into `~/Library/Application Support/Anki2/addons21/anki_fly`.
 

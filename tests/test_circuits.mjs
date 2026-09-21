@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 const meta = JSON.parse(readFileSync(new URL('../addon/web/data/meta.json', import.meta.url)));
 const G = meta.groups;
 const load = () => { const sim = new Sim(parseGraph(readFileSync(new URL('../addon/web/data/graph.bin', import.meta.url)).buffer.slice(0)));
-  const P = meta.plastic; sim.setPlasticEdges(Int32Array.from(P.edge), Int32Array.from(P.pre), Int32Array.from(P.post), Uint8Array.from(P.cls)); return sim; };
+  const P = meta.plastic; sim.setPlasticEdges(Int32Array.from(P.edge), Int32Array.from(P.pre), Int32Array.from(P.post), Uint8Array.from(P.cls)); for (const i of G.APL_DPM) sim.noQuench[i] = 1; return sim; };
 const count = (sim, idx) => idx.reduce((s, i) => s + sim.spikeCounts[i], 0);
 
 { const sim = load(); sim.stimulate(G.GRN_sugar, 150, 1000); sim.run(1000);
@@ -35,4 +35,11 @@ const count = (sim, idx) => idx.reduce((s, i) => s + sim.spikeCounts[i], 0);
   sim.stimulate(idx, 12, 5000); const sp = sim.run(5000);
   console.log(`tonic: ${sp} spikes in 5s = ${(sp / 5 / n).toFixed(3)} Hz/neuron`);
   assert.ok(sp / 5 / n < 5, 'network should not run away'); }
+{ // recovery: strong looming / sugar drive must not leave the network stuck (QA found a permanent LC4/GF runaway)
+  for (const [name, grp, rate, ms, read] of [['loom', G.LC4, 150, 150, G.GF], ['sugar', G.GRN_sugar, 150, 900, G.MN_proboscis]]) {
+    const sim = load(); sim.stimulate(grp, rate, ms); sim.run(ms + 5000);
+    const hot = [...Array(meta.n).keys()].filter(i => sim.rate[i] > 100).length;
+    console.log(`${name} +5s: readout ${sim.meanRate(read).toFixed(1)} Hz, neurons >100 Hz: ${hot}`);
+    assert.ok(sim.meanRate(read) < 5, `${name}: readout should be quiet 5 s later`); assert.ok(hot < 5, `${name}: no saturated neurons`); }
+}
 console.log('circuits ok');

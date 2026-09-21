@@ -38,6 +38,7 @@ class Exam {
     this.sim = new Sim(parseGraph(gbuf));
     const P = meta.plastic;
     this.sim.setPlasticEdges(Int32Array.from(P.edge), Int32Array.from(P.pre), Int32Array.from(P.post), Uint8Array.from(P.cls));
+    for (const i of (meta.groups.APL_DPM || [])) this.sim.noQuench[i] = 1;
     meta.denseGroups = new Set(this.g.KC);
     this.brain = new BrainView($('brain'), meta);
     this.sprite = mk($('fly'));
