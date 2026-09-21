@@ -122,6 +122,18 @@ class AnkiFly {
     item('m-min', () => py('fly:minimize'));
     item('m-close', () => py('fly:close'));
     $('leech').onclick = (e) => { e.stopPropagation(); py('fly:leeches:' + this.leeches().join(',')); };
+    item('m-rename', () => py('fly:rename'));
+    // resize grip: the widget grows toward the top-left; Python keeps the 2:1 ratio and repositions
+    const grip = $('grip');
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      try { grip.setPointerCapture(e.pointerId); } catch {}
+      const startX = e.screenX, startW = window.innerWidth;
+      let last = 0, w = startW;
+      const move = (ev) => { w = Math.round(Math.max(280, Math.min(900, startW + (startX - ev.screenX)))); const t = performance.now(); if (t - last > 40) { last = t; py('fly:resize:' + w); } };
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); py('fly:resized:' + w); };
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    });
     $('panel').onclick = () => { if (document.body.classList.contains('mini')) py('fly:restore'); };
     // hover over the brain: name the nearest neuron
     const brain = $('brain');
@@ -191,8 +203,10 @@ class AnkiFly {
         $('memory').style.display = this.cfg.showMemory ? '' : 'none';
         document.body.classList.toggle('mini', !!this.cfg.minimized);
         document.body.classList.toggle('focus', !!this.cfg.focus);
+        this.name = (this.cfg.name || '').trim();
+        $('fly').title = this.name ? `${this.name}, your study fly` : 'Your study fly';
         $('focus-on').textContent = this.cfg.focus ? '● on' : '';
-        if (this.cfg.focus) { $('bubble').classList.remove('show'); this.setStatus('deep focus · the fly is studying quietly'); }
+        if (this.cfg.focus) { $('bubble').classList.remove('show'); this.setStatus(`deep focus · ${this.name || 'the fly'} is studying quietly`); }
         else if ((this.statusText || '').startsWith('deep focus')) this.setStatus('back to studying');
         this.brain.resize(); this.sprite.resize();
         break;
@@ -210,7 +224,8 @@ class AnkiFly {
         this.wakeIfNeeded();
         this.updateMemoryBar();
         const m = this.memory[this.currentNid];
-        const feel = !m ? 'new to the fly' : this.pref(m) > 0.3 ? 'the fly likes this one' : this.pref(m) < -0.3 ? 'the fly dreads this one' : `the fly has seen this ${m.seen}×`;
+        const who = this.name || 'the fly';
+        const feel = !m ? `new to ${who}` : this.pref(m) > 0.3 ? `${who} likes this one` : this.pref(m) < -0.3 ? `${who} dreads this one` : `${who} has seen this ${m.seen}×`;
         this.setStatus(`sniffing this card · ${feel}`, false, `odor = glomeruli ${this.currentOdor.join(' ')} (from the note id)`);
         this.maybeSay(!m ? 'newCard' : this.pref(m) > 0.3 ? 'likedCard' : this.pref(m) < -0.3 ? 'dreadCard' : 'seenCard', {}, { every: 4 });
         break;
@@ -515,7 +530,7 @@ class AnkiFly {
     this.memory = data.memory || {};
     this.stats = data.stats || this.stats;
     this.streak = data.streak || 0;
-    this.setStatus(`remembers ${Object.keys(this.memory).length} of your cards`);
+    this.setStatus(`${this.name || 'the fly'} remembers ${Object.keys(this.memory).length} of your cards`);
     this.updateSession();
     this.leechCheck();
   }

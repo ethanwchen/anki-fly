@@ -3,6 +3,7 @@
 // States: idle, walk, groom, proboscis, sleep, startle, fly (free-standing)
 //         study, pressAgain, pressHard, pressGood, pressEasy, celebrate, dance, zoomies, crashout, sulk, sleepDesk, still (scene 'study')
 //         think, write, sleepDesk, still (scene 'exam'); setScene('study'|'exam'|null)
+// Species/variants (materials + vertex colours only): setSpecies('wild'|'white'|'ebony'|'yellow'|'female'), getSpecies()
 //
 // Geometry: anatomically detailed Drosophila body from TuragaLab/flybody (Apache-2.0),
 // decimated and baked into vendor/fly.bin (see vendor/LICENSE-flybody.txt). The MuJoCo
@@ -108,6 +109,15 @@ function paperTexture() {
   g.fillText('1.  ____________', 16, 45); g.fillText('2.  ____________', 16, 59); g.fillText('3.  ____________', 16, 73);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+
+// species: material overrides; tint multiplies the baked vertex colours (thorax, abdomen, head, legs)
+const SPECIES = {
+  wild:   { tint: 0xffffff, glow: 0x000000, body: 0x8c6230, lower: 0xb08a55, bristle: 0x1b1410, eye: 0xb8321e, eyeRough: 0.3, eyeOpacity: 1, wing: 0xbfd2f0, wingOpacity: 0.26, scale: 1 },
+  white:  { tint: 0xfff3e4, glow: 0x1a1208, body: 0x9a7040, lower: 0xbf9a65, bristle: 0x1b1410, eye: 0xfff6e6, eyeRough: 0.18, eyeOpacity: 0.92, wing: 0xbfd2f0, wingOpacity: 0.26, scale: 1 },
+  ebony:  { tint: 0x4a3d33, glow: 0x000000, body: 0x2a1f17, lower: 0x4a3a2c, bristle: 0x0d0a08, eye: 0xb8321e, eyeRough: 0.3, eyeOpacity: 1, wing: 0x8c8a90, wingOpacity: 0.36, scale: 1 },
+  yellow: { tint: 0xffe6a8, glow: 0x2a1e06, body: 0xc9a15a, lower: 0xd8b878, bristle: 0x6b4a2a, eye: 0xb8321e, eyeRough: 0.3, eyeOpacity: 1, wing: 0xc8d6ee, wingOpacity: 0.24, scale: 1 },
+  female: { tint: 0xffffff, glow: 0x000000, body: 0x8c6230, lower: 0xb08a55, bristle: 0x1b1410, eye: 0xb8321e, eyeRough: 0.3, eyeOpacity: 1, wing: 0xbfd2f0, wingOpacity: 0.26, scale: 1.15, femaleAbdomen: true },
+};
 
 // ---------- binary loader ----------
 async function loadFlyBin(url) {
@@ -215,6 +225,44 @@ export class FlySprite {
     if (name && !SCENE_STATES.has(this.state)) this.setState(this.state === 'sleep' ? 'sleepDesk' : 'study');
     this.needsRender = true;
     this.layout();
+  }
+
+  // ---------- species ----------
+  setSpecies(name) { this.species = SPECIES[name] ? name : 'wild'; if (this.ready) this.applySpecies(this.species); }
+  getSpecies() { return this.species || 'wild'; }
+  applySpecies(name) {
+    const S = SPECIES[name] || SPECIES.wild, M = this.M;
+    M.bodyVC.color.set(S.tint); M.lowerVC.color.set(S.tint); M.bodyVC.emissive.set(S.glow); M.lowerVC.emissive.set(S.glow);
+    M.body.color.set(S.body); M.lower.color.set(S.lower);
+    M.black.color.set(S.bristle); M['bristle-brown'].color.set(S.bristle);
+    M.red.color.set(S.eye); M.red.roughness = S.eyeRough; M.red.transparent = S.eyeOpacity < 1; M.red.opacity = S.eyeOpacity;
+    M.membrane.color.set(S.wing); M.membrane.opacity = S.wingOpacity;
+    // size (feet stay on the ground: base position scales with the root)
+    const k = S.scale, s = this.baseScale * k;
+    this.root.scale.setScalar(s); this.root.position.copy(this.basePos).multiplyScalar(k);
+    this.flyBox.copy(this.flyBox0); this.flyBox.min.multiplyScalar(k); this.flyBox.max.multiplyScalar(k);
+    this.bodyH = (this.flyBox.max.y - this.flyBox.min.y);
+    // female abdomen: longer, tapered, striped to the tip
+    const fem = !!S.femaleAbdomen;
+    const seg = { abdomen_3: 1.05, abdomen_4: 1.06, abdomen_5: 1.08, abdomen_6: 1.1, abdomen_7: 1.18 };
+    for (const n in seg) { const o = this.byName[n]; if (o) { o.scale.set(1, fem ? seg[n] : 1, 1); if (n === 'abdomen_7') o.scale.set(fem ? 0.85 : 1, fem ? seg[n] : 1, fem ? 0.85 : 1); } }
+    for (const P of this.abdParts || []) {
+      const attr = P.mesh.geometry.attributes.color;
+      if (!fem) { attr.array.set(P.col0); attr.needsUpdate = true; continue; }
+      const bname = this.bodies[P.body].name, kseg = bname === 'abdomen' ? 1 : +bname.split('_')[1];
+      const pos = P.mesh.geometry.attributes.position.array, L = this.abdLen[bname] || 0.02, n = attr.count;
+      const TAN = [0.66, 0.47, 0.25], DARK = [0.10, 0.06, 0.035], BELLY = [0.74, 0.58, 0.36], base = P.mat === 'lower' ? BELLY : TAN;
+      for (let i = 0; i < n; i++) {
+        let band = clamp(((pos[i * 3 + 1] / L) - 0.45) / 0.15, 0, 1);
+        if (P.mat === 'lower') band *= 0.35;
+        if (kseg === 1) band *= 0.5;
+        if (kseg === 7) band = clamp((pos[i * 3 + 1] / L - 0.6) / 0.2, 0, 1) * 0.8;   // dark only at the very tip
+        for (let c = 0; c < 3; c++) attr.array[i * 3 + c] = Math.round(Math.pow(base[c] * (1 - band) + DARK[c] * band, 2.2) * 255);
+      }
+      attr.needsUpdate = true;
+    }
+    this.reach = {}; this.needsRender = true;
+    if (this.sceneName) this.layout();
   }
 
   // stage frame: x = fly forward, z = fly right, y up; desk top is y = 0
@@ -423,6 +471,7 @@ export class FlySprite {
       if (p.mat === 'red') { this.eyeUVs(g); }
       g.computeVertexNormals();
       const mesh = new THREE.Mesh(g, mat);
+      if (p.col && B[p.body].name.startsWith('abdomen')) { this.abdParts = this.abdParts || []; this.abdParts.push({ mesh, body: p.body, mat: p.mat, col0: p.col }); }
       mesh.frustumCulled = false;
       const bname = B[p.body].name;
       mesh.name = bname + ':' + p.mat;
@@ -452,11 +501,17 @@ export class FlySprite {
     const size = box.getSize(new THREE.Vector3());
     const L = size.x;                              // MuJoCo x = fore-aft
     const s = 1 / L;
+    this.baseScale = s; this.basePos = new THREE.Vector3(-(box.min.x + box.max.x) / 2 * s, -box.min.y * s, -(box.min.z + box.max.z) / 2 * s);
     this.root.scale.setScalar(s);
-    this.root.position.set(-(box.min.x + box.max.x) / 2 * s, -box.min.y * s, -(box.min.z + box.max.z) / 2 * s);
+    this.root.position.copy(this.basePos);
     this.groundY = 0;
     this.bodyH = size.y * s;
-    this.flyBox = new THREE.Box3(new THREE.Vector3(-0.5, 0, -(box.max.z - box.min.z) / 2 * s), new THREE.Vector3(0.5, size.y * s, (box.max.z - box.min.z) / 2 * s));
+    this.flyBox0 = new THREE.Box3(new THREE.Vector3(-0.5, 0, -(box.max.z - box.min.z) / 2 * s), new THREE.Vector3(0.5, size.y * s, (box.max.z - box.min.z) / 2 * s));
+    this.flyBox = this.flyBox0.clone();
+    this.abdLen = {};   // segment lengths (distance to the next segment origin) for female restriping
+    B.forEach((b, i) => { if (b.parent >= 0 && B[b.parent].name.startsWith('abdomen')) this.abdLen[B[b.parent].name] = Math.hypot(...b.pos); });
+    this.abdLen.abdomen_7 = 0.03;
+    this.applySpecies(this.species || 'wild');
     this.ready = true;
     this.layout();
   }

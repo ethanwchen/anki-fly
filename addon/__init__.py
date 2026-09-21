@@ -148,6 +148,8 @@ class FlyWidget(QObject):
             "bubbles": bool(self.cfg.get("thought_bubbles", True)),
             "focus": self.focus,
             "pacing": bool(self.cfg.get("pacing_nudges", True)),
+            "name": str(self.cfg.get("fly_name", "") or ""),
+            "width": int(self.cfg.get("width", 400)),
         }})
 
     def eventFilter(self, obj, evt) -> bool:  # noqa: N802
@@ -203,6 +205,18 @@ class FlyWidget(QObject):
     @safe
     def toggle_focus(self) -> None:
         self.set_focus(not self.focus)
+
+    @safe
+    def rename(self) -> None:
+        from aqt.utils import getText
+        current = get_config().get("fly_name", "") or ""
+        name, ok = getText("What is your fly's name?", default=current, title="Drosophil-Anki")
+        if not ok:
+            return
+        cfg = get_config()
+        cfg["fly_name"] = name.strip()[:24]
+        write_config(cfg)
+        self.apply_config()
 
     @safe
     def sync_history(self) -> None:
@@ -269,6 +283,24 @@ class FlyWidget(QObject):
             return {"ok": True}
         if cmd == "fly:focus:off":
             self.set_focus(False)
+            return {"ok": True}
+        if cmd.startswith("fly:resize:") or cmd.startswith("fly:resized:"):
+            try:
+                w = max(280, min(900, int(cmd.split(":")[2])))
+            except ValueError:
+                return None
+            h = w // 2
+            if not self.minimized:
+                self.web.setFixedSize(w, h)
+                self.reposition()
+            if cmd.startswith("fly:resized:"):
+                cfg = get_config()
+                cfg["width"], cfg["height"] = w, h
+                write_config(cfg)
+                self.cfg = cfg
+            return {"ok": True}
+        if cmd == "fly:rename":
+            self.rename()
             return {"ok": True}
         if cmd.startswith("fly:leeches:"):
             nids = [n for n in cmd[len("fly:leeches:"):].split(",") if n.isdigit()]

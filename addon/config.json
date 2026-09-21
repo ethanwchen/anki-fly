@@ -1,5 +1,6 @@
 {
   "enabled": true,
+  "fly_name": "",
   "corner": "bottom-right",
   "width": 400,
   "height": 200,

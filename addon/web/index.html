@@ -4,50 +4,58 @@
 <meta charset="utf-8">
 <title>Drosophil-Anki</title>
 <style>
+  /* Everything is sized in rem where 1rem = 1% of the widget width (html font-size = 1vw), so resizing the
+     widget scales the layout, fonts, canvases and bubble together. Design size: 400x200 => 1rem = 4px. */
+  html { font-size: 1vw; }
   :root { color-scheme: dark;
     --bg: rgba(17, 19, 26, 0.9); --line: rgba(255,255,255,0.09); --ink: #eceef3; --ink2: #a3a9b8; --ink3: #6f7585;
     --good: #7ee3a0; --bad: #ff7b7b; --warn: #f2c14e; --accent: #46c9b3; }
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none;
-    font: 11px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); }
-  #panel { position: absolute; inset: 0; display: grid; grid-template-columns: 150px 1fr; grid-template-rows: 1fr; gap: 0 8px;
-    padding: 8px 10px 10px 6px; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 14px;
-    backdrop-filter: blur(10px); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
-  #fly { width: 100%; height: 100%; display: block; border-radius: 10px; }
-  #right { display: grid; grid-template-rows: 96px auto auto auto 1fr; gap: 3px; min-width: 0; min-height: 0; }
-  #brain { width: 100%; height: 96px; display: block; border-radius: 8px; background: rgba(0,0,0,0.28); cursor: crosshair; }
-  #legend { display: flex; gap: 8px; font-size: 9px; color: var(--ink3); padding: 0 2px; }
-  #legend span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: 0; background: var(--c); }
-  #status { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
-  #memrow { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
-  #memory { height: 5px; background: rgba(255,255,255,0.09); border-radius: 3px; overflow: hidden; }
-  #membar { height: 100%; width: 50%; transition: width .4s; border-radius: 3px; }
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); }
+  body { font-size: 2.75rem; line-height: 1.35; }
+  #panel { position: absolute; inset: 0; display: grid; grid-template-columns: 37.5rem 1fr; grid-template-rows: 1fr; gap: 0 2rem;
+    padding: 2rem 2.5rem 2.5rem 1.5rem; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 3.5rem;
+    backdrop-filter: blur(10px); box-shadow: 0 1.5rem 6rem rgba(0,0,0,0.35); }
+  #fly { width: 100%; height: 100%; display: block; border-radius: 2.5rem; }
+  #right { display: grid; grid-template-rows: 24rem auto auto auto 1fr; gap: .75rem; min-width: 0; min-height: 0; }
+  #brain { width: 100%; height: 24rem; display: block; border-radius: 2rem; background: rgba(0,0,0,0.28); cursor: crosshair; }
+  #legend { display: flex; gap: 2rem; font-size: 2.25rem; color: var(--ink3); padding: 0 .5rem; }
+  #legend span::before { content: ""; display: inline-block; width: 1.5rem; height: 1.5rem; border-radius: 50%; margin-right: .75rem; vertical-align: 0; background: var(--c); }
+  #status { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 2.75rem; }
+  #memrow { display: grid; grid-template-columns: 1fr auto; gap: 1.5rem; align-items: center; }
+  #memory { height: 1.25rem; background: rgba(255,255,255,0.09); border-radius: .75rem; overflow: hidden; }
+  #membar { height: 100%; width: 50%; transition: width .4s; border-radius: .75rem; }
   #membar.neutral { background: #6b7280; } #membar.good { background: var(--good); } #membar.bad { background: var(--bad); }
-  #memlabel { color: var(--ink2); font-size: 10px; white-space: nowrap; }
-  #foot { display: flex; align-items: end; justify-content: space-between; gap: 6px; color: var(--ink3); font-size: 9.5px; min-width: 0; padding-bottom: 2px; line-height: 1.2; }
+  #memlabel { color: var(--ink2); font-size: 2.5rem; white-space: nowrap; }
+  #foot { display: flex; align-items: end; justify-content: space-between; gap: 1.5rem; color: var(--ink3); font-size: 2.4rem; min-width: 0; padding-bottom: .5rem; line-height: 1.2; }
   #session { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #hz { white-space: nowrap; }
-  #leech { background: rgba(255,123,123,0.14); color: var(--bad); border: 0; border-radius: 5px; padding: 1px 6px; font: inherit; font-size: 9.5px; cursor: pointer; white-space: nowrap; }
+  #leech { background: rgba(255,123,123,0.14); color: var(--bad); border: 0; border-radius: 1.25rem; padding: .25rem 1.5rem; font: inherit; font-size: 2.4rem; cursor: pointer; white-space: nowrap; }
   #leech:hover { background: rgba(255,123,123,0.28); }
   /* gear + menu */
-  #gear { position: absolute; top: 6px; right: 8px; width: 22px; height: 22px; border-radius: 6px; border: 0; background: rgba(255,255,255,0.06);
-    color: var(--ink2); cursor: pointer; font-size: 13px; line-height: 22px; padding: 0; opacity: .55; transition: opacity .15s, background .15s; }
+  #gear { position: absolute; top: 1.5rem; right: 2rem; width: 5.5rem; height: 5.5rem; border-radius: 1.5rem; border: 0; background: rgba(255,255,255,0.06);
+    color: var(--ink2); cursor: pointer; font-size: 3.25rem; line-height: 5.5rem; padding: 0; opacity: .55; transition: opacity .15s, background .15s; }
   #panel:hover #gear, #gear:focus-visible { opacity: 1; }
   #gear:hover { background: rgba(255,255,255,0.16); color: #fff; }
-  #menu { position: absolute; top: 30px; right: 8px; background: #1d2029; border: 1px solid var(--line); border-radius: 10px; padding: 4px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.45); display: none; flex-direction: column; min-width: 190px; z-index: 5; }
+  #menu { position: absolute; top: 7.5rem; right: 2rem; background: #1d2029; border: 1px solid var(--line); border-radius: 2.5rem; padding: 1rem;
+    box-shadow: 0 2rem 6rem rgba(0,0,0,0.45); display: none; flex-direction: column; min-width: 47.5rem; z-index: 5; }
   #menu.open { display: flex; }
-  #menu button { background: none; border: 0; color: var(--ink); text-align: left; padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit;
-    display: flex; justify-content: space-between; gap: 12px; }
+  #menu button { background: none; border: 0; color: var(--ink); text-align: left; padding: 1.5rem 2rem; border-radius: 1.5rem; cursor: pointer; font: inherit;
+    display: flex; justify-content: space-between; gap: 3rem; }
   #menu button:hover { background: rgba(255,255,255,0.08); }
-  #menu button kbd { color: var(--ink3); font: 9px ui-monospace, Menlo, monospace; }
+  #menu button kbd { color: var(--ink3); font: 2.25rem ui-monospace, Menlo, monospace; }
   #menu button .on { color: var(--accent); }
-  #bubble { position: absolute; left: 10px; top: 10px; max-width: 132px; background: #f7f4ec; color: #22242a; border-radius: 12px; padding: 6px 9px;
-    font-size: 11px; line-height: 1.3; opacity: 0; transform: translateY(4px) scale(.96); transform-origin: 20px 100%; transition: opacity .18s, transform .18s; pointer-events: none; z-index: 3;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
-  /* speech tail: a rotated square hanging off the bottom-left edge, pointing at the fly */
-  #bubble::after { content: ""; position: absolute; left: 16px; bottom: -6px; width: 12px; height: 12px; background: #f7f4ec; transform: rotate(45deg); border-radius: 0 0 3px 0; }
+  #menu .sep { border-top: 1px solid var(--line); margin: .75rem 0; }
+  /* resize grip: top-left corner, drag toward the top-left to enlarge (ratio stays 2:1) */
+  #grip { position: absolute; left: 0; top: 0; width: 5rem; height: 5rem; cursor: nwse-resize; opacity: 0; transition: opacity .15s; border-radius: 3.5rem 0 0 0; }
+  #grip::before { content: ""; position: absolute; left: 1.25rem; top: 1.25rem; width: 2.5rem; height: 2.5rem; border-left: 2px solid var(--ink2); border-top: 2px solid var(--ink2); border-radius: 1rem 0 0 0; }
+  #panel:hover #grip { opacity: .7; } #grip:hover { opacity: 1 !important; }
+  #bubble { position: absolute; left: 2.5rem; top: 2.5rem; max-width: 33rem; background: #f7f4ec; color: #22242a; border-radius: 3rem; padding: 1.5rem 2.25rem;
+    font-size: 2.75rem; line-height: 1.3; opacity: 0; transform: translateY(1rem) scale(.96); transform-origin: 5rem 100%; transition: opacity .18s, transform .18s; pointer-events: none; z-index: 3;
+    box-shadow: 0 .5rem 2rem rgba(0,0,0,0.35); }
+  #bubble::after { content: ""; position: absolute; left: 4rem; bottom: -1.5rem; width: 3rem; height: 3rem; background: #f7f4ec; transform: rotate(45deg); border-radius: 0 0 .75rem 0; }
   #bubble.show { opacity: 1; transform: none; }
-  #focusbadge { position: absolute; left: 10px; bottom: 8px; font-size: 9px; color: var(--ink3); letter-spacing: .06em; text-transform: uppercase; display: none; }
+  #focusbadge { position: absolute; left: 2.5rem; bottom: 2rem; font-size: 2.25rem; color: var(--ink3); letter-spacing: .06em; text-transform: uppercase; display: none; }
   #dev { display: none; position: absolute; left: 4px; bottom: 2px; gap: 2px; flex-wrap: wrap; z-index: 6; }
   #dev button { font-size: 9px; padding: 1px 4px; }
   /* states */
@@ -55,7 +63,7 @@
   body.focus #brain { opacity: .45; } body.focus #bubble { display: none; } body.focus #focusbadge { display: block; }
   body.focus #panel { background: rgba(14, 15, 20, 0.82); }
   body.mini #panel { grid-template-columns: 1fr; padding: 2px; border-radius: 12px; cursor: pointer; }
-  body.mini #right, body.mini #gear, body.mini #menu, body.mini #bubble, body.mini #focusbadge { display: none; }
+  body.mini #right, body.mini #gear, body.mini #menu, body.mini #bubble, body.mini #focusbadge, body.mini #grip { display: none; }
 </style>
 </head>
 <body data-state="idle">
@@ -68,9 +76,11 @@
     <div id="memrow"><div id="memory"><div id="membar" class="neutral"></div></div><div id="memlabel">fly memory</div></div>
     <div id="foot"><div id="session"></div><button id="leech" hidden></button><div id="hz"></div></div>
   </div>
+  <div id="grip" title="Drag to resize"></div>
   <button id="gear" title="Fly options" aria-label="Fly options" aria-haspopup="menu">⚙</button>
   <div id="menu" role="menu">
     <button id="m-focus" role="menuitem"><span>Deep Focus <span class="on" id="focus-on"></span></span><kbd>⌃⇧D</kbd></button>
+    <button id="m-rename" role="menuitem"><span>Name the fly…</span></button>
     <button id="m-exam" role="menuitem"><span>Fly Exam…</span><kbd>⌃⇧E</kbd></button>
     <button id="m-min" role="menuitem"><span>Minimize</span></button>
     <button id="m-close" role="menuitem"><span>Hide for now</span><kbd>⌃⇧F</kbd></button>

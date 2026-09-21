@@ -4,7 +4,8 @@ A fruit fly whose brain is a real slice of the MaleCNS connectome, studying alon
 
 - `enabled`: show the fly.
 - `corner`: `bottom-right`, `bottom-left`, `top-right`, `top-left`.
-- `width`, `height`, `margin`: widget size and distance from the corner, in pixels.
+- `fly_name`: your fly's name (also: gear menu → Name the fly).
+- `width`: widget width in pixels (height is always half); drag the top-left corner of the widget to resize. `margin`: distance from the corner.
 - `opacity`: 0–1.
 - `show_outside_review`: keep the fly visible on the deck list / overview too.
 - `show_memory_bar`: show the "fly memory" bar for the current card.

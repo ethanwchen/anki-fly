@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Build the Anki Fly data pack (addon/web/data/{graph.bin,meta.json}) from MaleCNS v1.0.
+"""Build an Anki Fly data pack ({graph.bin,meta.json}) from a connectome served by neuprint-cns.janelia.org.
 
-Data: Janelia FlyEM / Google "male-cns:v1.0" via the public neuPrint Cypher endpoint
-(https://neuprint-cns.janelia.org). License CC BY 4.0.
+    --dataset male    MaleCNS v1.0 ("male-cns:v1.0", CC BY 4.0)          -> addon/web/data/          (default)
+    --dataset female  FlyWire FAFB v783b ("flywire-fafb:v783b", CC BY-NC 4.0) -> addon/web/data/female/
+
+Both packs have the same binary/JSON layout, the same group names and the same plastic-edge convention,
+so fly.js / exam.js can load either one unchanged.
 
 Subcircuit:
   * olfactory uniglomerular projection neurons (grouped by glomerulus)   -> odor input
@@ -19,10 +22,49 @@ import hashlib, json, os, re, struct, sys, random, time
 import requests
 
 API = "https://neuprint-cns.janelia.org/api/custom/custom"
-DATASET = "male-cns:v1.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "..", "addon", "web", "data")
-CACHE = os.path.join(HERE, "cache")
+
+# Per-dataset differences. Everything else (weights, APL scaling, open-loop silhouette, MIN_W) is shared.
+DATASETS = {
+    "male": {
+        "dataset": "male-cns:v1.0",
+        "out": os.path.join(HERE, "..", "addon", "web", "data"),
+        "cache": os.path.join(HERE, "cache"),
+        "source": CFG["source"], "dataset": DATASET,
+        "nt_prop": "n.consensusNt",
+        "central": "cb_intrinsic",                  # superclass of central-brain intrinsic neurons
+        "silhouette_sc": ["cb_intrinsic", "visual_projection", "descending_neuron", "ol_intrinsic", "visual_centrifugal"],
+        "gf": "n.type = 'DNp01'",
+        "grn_sugar": "n.flywireType = 'LB3' AND n.class = 'gustatory'",
+        "mn": "n.type IN ['MN9','MN1','MN6']",
+        "xyz_scale": (1, 1, 1),                     # somaLocation already in a uniform unit
+        "fill_nt": {},                              # group -> NT used when the prediction is missing
+        "force_nt": {},                             # group -> NT applied regardless of prediction
+    },
+    "female": {
+        "dataset": "flywire-fafb:v783b",
+        "out": os.path.join(HERE, "..", "addon", "web", "data", "female"),
+        "cache": os.path.join(HERE, "cache", "female"),
+        "source": "FlyWire FAFB v783b (Dorkenwald et al. 2024; Schlegel et al. 2024 annotations), CC BY-NC 4.0, via neuprint-cns.janelia.org",
+        "nt_prop": "n.predictedNt",                 # FlyWire has no consensusNt; Eckstein et al. 2024 predictions
+        "central": "central",
+        "silhouette_sc": ["central", "visual_projection", "descending", "optic", "visual_centrifugal"],
+        "gf": "n.type = 'DNp01'",                   # hemibrainType 'Giant Fiber'
+        "grn_sugar": "n.type = 'LB3' AND n.class = 'gustatory'",   # subclass 'sugar/water'
+        "mn": "n.type IN ['CB0701','CB0720','CB0858']",             # = MN9, MN1, MN6
+        "xyz_scale": (4, 4, 40),                    # FAFB somaLocation is in 4x4x40 nm voxels -> nm
+        # FlyWire NT predictions on sensory axons and small DNs are patchy (38/122 sugar GRNs have none,
+        # a few are called Glu/5-HT). Sugar GRNs are cholinergic (Gr5a/Gr64f), so the group is forced to ACh;
+        # for the other groups only a missing prediction is filled with the known transmitter.
+        "fill_nt": {"KC": "acetylcholine", "LC4": "acetylcholine", "GF": "acetylcholine", "PAM": "dopamine",
+                    "PPL1": "dopamine", "MN_proboscis": "acetylcholine"},
+        "force_nt": {"GRN_sugar": "acetylcholine"},
+    },
+}
+CFG = DATASETS["male"]
+DATASET = CFG["dataset"]
+OUT = CFG["out"]
+CACHE = CFG["cache"]
 MIN_W = 3
 W_UNIT = 0.275
 APL_SCALE = 0.5
@@ -48,25 +90,42 @@ def cypher(q, key):
     return data
 
 
-NODE_RETURN = "RETURN n.bodyId AS id, n.type AS type, n.instance AS inst, n.consensusNt AS nt, n.somaLocation AS soma, n.superclass AS sc, n.flywireType AS fwt, n.class AS cls, n.subclass AS subcls"
+NODE_RETURN = None  # set in main() from CFG
+
+
+def node_return():
+    return (f"RETURN n.bodyId AS id, n.type AS type, n.instance AS inst, {CFG['nt_prop']} AS nt, n.somaLocation AS soma, "
+            f"n.superclass AS sc, n.flywireType AS fwt, n.class AS cls, n.subclass AS subcls")
+
+
+def row_to_node(cols, row):
+    d = dict(zip(cols, row))
+    if d["soma"] and d["soma"].get("coordinates"):
+        sx, sy, sz = CFG["xyz_scale"]
+        x, y, z = d["soma"]["coordinates"]
+        d["xyz"] = [x * sx, y * sy, z * sz]
+    else:
+        d["xyz"] = None
+    del d["soma"]
+    return d
 
 
 def nodes(where, key):
     res = cypher(f"MATCH (n:Neuron) WHERE {where} {NODE_RETURN}", key)
-    cols = res["columns"]
-    out = []
-    for row in res["data"]:
-        d = dict(zip(cols, row))
-        if d["soma"] and d["soma"].get("coordinates"):
-            d["xyz"] = d["soma"]["coordinates"]
-        else:
-            d["xyz"] = None
-        del d["soma"]
-        out.append(d)
-    return out
+    return [row_to_node(res["columns"], row) for row in res["data"]]
 
 
 def main():
+    global CFG, DATASET, OUT, CACHE, NODE_RETURN
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dataset", choices=sorted(DATASETS), default="male")
+    args = ap.parse_args()
+    CFG = DATASETS[args.dataset]; DATASET = CFG["dataset"]; OUT = CFG["out"]; CACHE = CFG["cache"]
+    NODE_RETURN = node_return()
+    CENTRAL = CFG["central"]
+    print(f"dataset {DATASET} -> {os.path.relpath(OUT)}")
+
     groups = {}
     sel = {}  # id -> node dict
 
@@ -77,7 +136,7 @@ def main():
                 groups.setdefault(group, set()).add(n["id"])
 
     # --- olfactory PNs, grouped by glomerulus
-    pns = nodes("n.type =~ '^[A-Za-z0-9+]+_(ad|l|lv|v|il|vl|lvPN|)PN$' AND n.superclass = 'cb_intrinsic' AND n.status = 'Traced'", "pns")
+    pns = nodes(f"n.type =~ '^[A-Za-z0-9+]+_(ad|l|lv|v|il|vl|lvPN|)PN$' AND n.superclass = '{CENTRAL}' AND n.status = 'Traced'", "pns")
     glom = {}
     for n in pns:
         g = n["type"].split("_")[0]
@@ -94,13 +153,9 @@ def main():
     pn_ids = sorted(b for g, v in glom.items() for b in (x["id"] for x in v))
     ln = cypher(
         f"MATCH (n:Neuron)-[c:ConnectsTo]->(p:Neuron) WHERE p.bodyId IN {pn_ids} AND c.weight >= 5 "
-        f"AND n.superclass = 'cb_intrinsic' AND NOT n.type STARTS WITH 'KC' AND NOT n.type =~ '.*PN$' "
+        f"AND n.superclass = '{CENTRAL}' AND NOT n.type STARTS WITH 'KC' AND NOT n.type =~ '.*PN$' "
         f"WITH n, count(DISTINCT p) AS k WHERE k >= 8 {NODE_RETURN}", "al_ln")
-    cols = ln["columns"]
-    ln_nodes = []
-    for row in ln["data"]:
-        d = dict(zip(cols, row)); d["xyz"] = d["soma"]["coordinates"] if d["soma"] else None; del d["soma"]
-        ln_nodes.append(d)
+    ln_nodes = [row_to_node(ln["columns"], row) for row in ln["data"]]
     # NOTE: not added to the graph. Cholinergic lLN2T/lLN1 "excitatory" LNs recruit every glomerulus in a
     # LIF model (their real effect is mostly weak electrical coupling), so we drive PNs directly instead.
     print(f"AL local neurons found (excluded): {len(ln_nodes)}")
@@ -111,42 +166,46 @@ def main():
     add(nodes("n.type =~ 'PAM[0-9][0-9].*'", "pam"), "PAM")
     add(nodes("n.type =~ 'PPL1[0-9][0-9].*'", "ppl1"), "PPL1")
     add(nodes("n.type = 'LC4'", "lc4"), "LC4")
-    add(nodes("n.type = 'DNp01'", "gf"), "GF")
+    add(nodes(CFG["gf"], "gf"), "GF")
     for t in ["DNp09", "DNg11", "MDN", "DNa01", "DNa02"]:
         add(nodes(f"n.type = '{t}'", t.lower()), t)
-    add(nodes("n.flywireType = 'LB3' AND n.class = 'gustatory'", "grn_sugar"), "GRN_sugar")
-    add(nodes("n.type IN ['MN9','MN1','MN6']", "mn"), "MN_proboscis")
+    add(nodes(CFG["grn_sugar"], "grn_sugar"), "GRN_sugar")
+    add(nodes(CFG["mn"], "mn"), "MN_proboscis")
     # interneurons on GRN -> ? -> MN paths
     grn_ids = sorted(groups["GRN_sugar"]); mn_ids = sorted(groups["MN_proboscis"])
     inter = cypher(
         f"MATCH (g:Neuron)-[a:ConnectsTo]->(i:Neuron)-[b:ConnectsTo]->(m:Neuron) "
         f"WHERE g.bodyId IN {grn_ids} AND m.bodyId IN {mn_ids} AND a.weight >= 5 AND b.weight >= 5 "
         f"WITH DISTINCT i AS n {NODE_RETURN}", "grn_inter")
-    cols = inter["columns"]
-    inter_nodes = []
-    for row in inter["data"]:
-        d = dict(zip(cols, row)); d["xyz"] = d["soma"]["coordinates"] if d["soma"] else None; del d["soma"]
-        inter_nodes.append(d)
+    inter_nodes = [row_to_node(inter["columns"], row) for row in inter["data"]]
     inter2 = cypher(
         f"MATCH (g:Neuron)-[a:ConnectsTo]->(i:Neuron)-[b:ConnectsTo]->(j:Neuron)-[c:ConnectsTo]->(m:Neuron) "
         f"WHERE g.bodyId IN {grn_ids} AND m.bodyId IN {mn_ids} AND a.weight >= 8 AND b.weight >= 8 AND c.weight >= 8 "
-        f"AND i.superclass = 'cb_intrinsic' AND j.superclass = 'cb_intrinsic' "
+        f"AND i.superclass = '{CENTRAL}' AND j.superclass = '{CENTRAL}' "
         f"UNWIND [i, j] AS n WITH DISTINCT n {NODE_RETURN}", "grn_inter2")
-    cols = inter2["columns"]
     for row in inter2["data"]:
-        d = dict(zip(cols, row)); d["xyz"] = d["soma"]["coordinates"] if d["soma"] else None; del d["soma"]
-        if d["id"] not in sel:
+        d = row_to_node(inter2["columns"], row)
+        if d["id"] not in sel and d["id"] not in {x["id"] for x in inter_nodes}:
             inter_nodes.append(d)
     add(inter_nodes, "GRN_interneurons")
     print(f"GRN interneurons (1- and 2-hop): {len(inter_nodes)}")
 
     # silhouette sample
-    sil = nodes("n.superclass IN ['cb_intrinsic','visual_projection','descending_neuron','ol_intrinsic','visual_centrifugal'] AND n.status = 'Traced' AND n.somaLocation IS NOT NULL", "silhouette_all2")
+    sil = nodes(f"n.superclass IN {CFG['silhouette_sc']} AND n.status = 'Traced' AND n.somaLocation IS NOT NULL", "silhouette_all2")
     sil = [n for n in sil if n["id"] not in sel and n["xyz"]]
     random.shuffle(sil)
     add(sil[:SILHOUETTE_N], "background")
     bg_ids = set(groups["background"])
     print(f"total neurons: {len(sel)}")
+
+    # transmitter fixes for datasets with patchy predictions (see DATASETS[...]["fill_nt"/"force_nt"])
+    for g, t in CFG["force_nt"].items():
+        for b in groups.get(g, ()):
+            sel[b]["nt"] = t
+    for g, t in CFG["fill_nt"].items():
+        for b in groups.get(g, ()):
+            if not sel[b]["nt"]:
+                sel[b]["nt"] = t
 
     # --- edges among selected
     ids = sorted(sel)
@@ -225,7 +284,7 @@ def main():
     G = {k: sorted(index[b] for b in v) for k, v in groups.items() if not k.startswith("PN:")}
     G["PN_glomeruli"] = {k[3:]: sorted(index[b] for b in v) for k, v in groups.items() if k.startswith("PN:")}
     meta = {
-        "source": "MaleCNS v1.0 (Janelia FlyEM / Google Research), CC BY 4.0, via neuprint-cns.janelia.org",
+        "source": CFG["source"], "dataset": DATASET,
         "n": n, "nnz": len(col), "min_weight": MIN_W, "w_unit_mV": W_UNIT,
         "type": [sel[b]["type"] or "" for b in ids],
         "nt": nt,
