@@ -95,6 +95,7 @@ class AnkiFly {
     this.kcSet = new Set(this.g.KC);
     meta.denseGroups = this.kcSet;
     this.brain = new BrainView($('brain'), meta);
+    requestAnimationFrame(() => this.brain.resize());
     this.sprite = await makeSprite($('fly'));
     if (this.sprite.setScene) this.sprite.setScene('study');
     if (this.sprite.setSpecies) this.sprite.setSpecies(this.sex === 'female' ? 'female' : 'wild');
