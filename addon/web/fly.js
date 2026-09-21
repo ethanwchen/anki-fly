@@ -30,7 +30,7 @@ const VOICE = {
   sleepy: ['zzz…', 'sleepy.', 'desk is comfy.'],
   wake: ['huh? oh, hi.', 'I\'m up. I\'m up.', 'back to it.'],
   idle: ['still here.', 'waiting.', 'take your time.', 'cards?', 'I\'ll wait.'],
-  sessionEnd: ['{cards} cards. good session.', 'done for now.', '{cards} cards, {again} stung.'],
+  sessionEnd: ['{cards}. good session.', 'done for now.', '{cards}, {again} stung.'],
   amnesia: ['…who are you?', 'blank.', 'what deck?'],
   synced: ['I remember now.', 'so many smells.', '{n} cards. wow.'],
 };
@@ -267,7 +267,7 @@ class AnkiFly {
         this.clearOdor();
         const s = this.session, mins = ((performance.now() - s.start) / 60000).toFixed(0);
         this.setStatus(`session over · ${s.cards} cards in ${mins} min · ${s.synapses} synapses rewired`);
-        if (s.cards) this.maybeSay('sessionEnd', { cards: s.cards, again: s.again }, { every: 1, force: true, ms: 5000 });
+        if (s.cards) this.maybeSay('sessionEnd', { cards: s.cards === 1 ? '1 card' : `${s.cards} cards`, again: s.again }, { every: 1, force: true, ms: 5000 });
         this.session = { cards: 0, again: 0, synapses: 0, start: performance.now() };
         this.save();
         break;

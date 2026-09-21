@@ -219,6 +219,9 @@ class ExamDialog(QDialog):
 
     def _on_cmd(self, cmd: str):
         if cmd == "exam:ready":
+            fly = getattr(mw, "_anki_fly", None)
+            if fly and fly._refresh_if_updated("exam_version", self.web):
+                return {"ok": True}
             self.web.eval(f"window.exam.start({json.dumps(self.payload)})")
             return {"ok": True}
         if cmd == "exam:close":

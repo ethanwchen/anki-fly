@@ -94,11 +94,6 @@ class FlyWidget(QObject):
         self.web.disable_zoom()
         self.web.set_bridge_command(self.on_cmd, self)
         self._apply_transparency()
-        # Anki's media server sends max-age=3600 for add-on files; make sure an updated add-on isn't served stale.
-        try:
-            self.web.page().profile().clearHttpCache()
-        except Exception:
-            pass
         # AnkiWebPage refuses main-frame navigation to /_addons/ URLs unless this is off.
         self.web.set_open_links_externally(False)
         self.web.load_url(QUrl(f"{mw.serverURL()}_addons/{PKG}/web/index.html"))
@@ -108,6 +103,27 @@ class FlyWidget(QObject):
         gui_hooks.theme_did_change.append(self._apply_transparency)
         self.apply_config()
         self.web.raise_()
+
+    def _version(self) -> str:
+        try:
+            with open(os.path.join(ADDON_DIR, "manifest.json")) as f:
+                return str(json.load(f).get("human_version", ""))
+        except Exception:
+            return ""
+
+    def _refresh_if_updated(self, key: str, web: AnkiWebView) -> bool:
+        """After an add-on update, reload this page bypassing Chromium's cache (Anki's media server sends
+        max-age=3600 for add-on files). Only touches our own page. Returns True if a reload was triggered."""
+        version = self._version()
+        if read_state().get(key) == version:
+            return False
+        write_state(**{key: version})
+        try:
+            from aqt.qt import QWebEnginePage
+            web.page().triggerAction(QWebEnginePage.WebAction.ReloadAndBypassCache)
+            return True
+        except Exception:
+            return False
 
     # ---- layout
     @safe
@@ -236,6 +252,8 @@ class FlyWidget(QObject):
     @safe
     def on_cmd(self, cmd: str):
         if cmd == "fly:ready":
+            if self._refresh_if_updated("version", self.web):
+                return {"ok": True}      # page reloads and will announce itself again
             self.load_memory()
             self.apply_config()
             return {"ok": True}

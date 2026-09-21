@@ -7,6 +7,8 @@ dopamine, and you can watch the neurons fire.
 
 ![The fly studying with you](docs/widget.gif)
 
+Full demo video: [docs/anki-fly-demo.mp4](docs/anki-fly-demo.mp4)
+
 The fly sits an exam on your deck:
 
 ![Fly Exam](docs/exam.gif)
