@@ -1,0 +1,7 @@
+dist/
+__pycache__/
+*.pyc
+.DS_Store
+tools/cache/
+addon/user_files/
+addon/meta.json

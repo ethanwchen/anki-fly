@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Anki Fly</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 10px/1.3 ui-sans-serif, system-ui, -apple-system, sans-serif; color: #cfd3dc; }
+  #panel { position: absolute; inset: 0; display: grid; grid-template-columns: 96px 1fr; grid-template-rows: 1fr auto; gap: 0 6px; padding: 6px 8px 6px 6px; box-sizing: border-box;
+           background: rgba(18, 20, 28, 0.86); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; backdrop-filter: blur(8px); }
+  #fly, #brain { width: 100%; height: 100%; display: block; }
+  #fly { grid-row: 1 / span 2; }
+  #brain { border-radius: 6px; background: rgba(0,0,0,0.25); }
+  #meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  #status { color: #e8ebf2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #count, #hz { color: #8a90a0; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #memory { height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; position: relative; }
+  #membar { height: 100%; width: 50%; transition: width .4s; }
+  #membar.neutral { background: #6b7280; } #membar.good { background: #7ee3a0; } #membar.bad { background: #ff6b6b; }
+  #memlabel { color: #8a90a0; font-size: 9px; }
+  #dev { display: none; position: absolute; left: 4px; bottom: 2px; gap: 2px; flex-wrap: wrap; }
+  #dev button { font-size: 9px; padding: 1px 4px; }
+  body[data-state="sleep"] #panel { background: rgba(10, 12, 22, 0.9); }
+</style>
+</head>
+<body data-state="idle">
+<div id="panel">
+  <canvas id="fly"></canvas>
+  <canvas id="brain"></canvas>
+  <div id="meta">
+    <div id="status">waking up…</div>
+    <div id="memory"><div id="membar" class="neutral"></div></div>
+    <div id="memlabel">fly memory</div>
+    <div id="count"></div>
+    <div id="hz"></div>
+  </div>
+</div>
+<div id="dev"></div>
+<script type="module" src="fly.js"></script>
+</body>
+</html>
