@@ -18,8 +18,16 @@ class Exam {
     const base = new URL('.', import.meta.url);
     let spriteMod;
     try { if (!window.THREE) throw new Error('no three'); spriteMod = await import('./fly3d.js'); } catch { spriteMod = await import('./fly_sprite.js'); }
-    const mk = (canvas) => { try { const sp = new spriteMod.FlySprite(canvas); sp.update(0); sp.draw(); return sp; } catch (e) { console.warn('[anki-fly exam] 3D failed, 2D fallback', e); return new (window.__FlySprite2D)(canvas); } };
-    if (!window.__FlySprite2D) window.__FlySprite2D = (await import('./fly_sprite.js')).FlySprite;
+    const Sprite2D = (await import('./fly_sprite.js')).FlySprite;
+    const mk = (canvas) => {
+      if (spriteMod.FlySprite === Sprite2D) return new Sprite2D(canvas);
+      try { const sp = new spriteMod.FlySprite(canvas); sp.update(0); sp.draw(); return sp; }
+      catch (e) {
+        console.warn('[anki-fly exam] 3D failed, 2D fallback', e);
+        const c = document.createElement('canvas'); c.id = canvas.id; canvas.replaceWith(c);   // WebGL-claimed canvas can't give a 2D context
+        return new Sprite2D(c);
+      }
+    };
     const [meta, gbuf] = await Promise.all([
       fetch(new URL('data/meta.json', base)).then(r => r.json()),
       fetch(new URL('data/graph.bin', base)).then(r => r.arrayBuffer()),
@@ -45,10 +53,10 @@ class Exam {
 
   frame(now) {
     const dt = Math.min(50, now - this.last); this.last = now;
-    try {
-      if (!this.running) this.sim.run(dt);
-      this.sprite.update(dt); this.sprite.draw(); this.brain.draw(dt);
-    } catch (e) { if (!this._err) { this._err = true; console.warn('[anki-fly exam] frame error', e); } }
+    try { if (!this.running) this.sim.run(dt); this.brain.draw(dt); }
+    catch (e) { if (!this._err) { this._err = true; console.warn('[anki-fly exam] frame error', e); } }
+    try { this.sprite.update(dt); this.sprite.draw(); }
+    catch (e) { if (!this._spriteErr) { this._spriteErr = true; console.warn('[anki-fly exam] sprite error', e); } }
     requestAnimationFrame(t => this.frame(t));
   }
 

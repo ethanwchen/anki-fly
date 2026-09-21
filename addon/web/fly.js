@@ -93,7 +93,6 @@ class AnkiFly {
     $('brain').title = this.brainTitle + '. Hover a dot to see which neuron it is.';
     this.updateSession();
     window.addEventListener('resize', () => { try { this.brain.resize(); this.sprite.resize(); } catch (e) { console.warn(e); } });
-    $('fly').addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('[anki-fly] WebGL context lost; using 2D sprite'); this.sprite = new FlySprite2D($('fly')); if (this.sprite.setScene) this.sprite.setScene('study'); });
     this.wireControls();
     this.lastFrame = performance.now();
     requestAnimationFrame((t) => this.frame(t));
@@ -370,7 +369,10 @@ class AnkiFly {
     if (st !== this.state) { this.state = st; document.body.dataset.state = st; }
     this.sprite.setState(st);
     try { this.sprite.update(wall); this.sprite.draw(); }
-    catch (e) { console.warn('[anki-fly] sprite failed, switching to 2D', e); this.sprite = new FlySprite2D($('fly')); }
+    catch (e) {
+      if (!(this.sprite instanceof FlySprite2D)) { console.warn('[anki-fly] sprite failed, switching to 2D', e); this.sprite = new FlySprite2D(freshCanvas($('fly'))); }
+      else if (!this._spriteErr) { this._spriteErr = true; console.warn('[anki-fly] 2D sprite failed too', e); }
+    }
     this.brain.draw(wall);
     if (!this.cfg.focus && now - this.lastEvent > 30000 && now - this.lastFact > 120000 && !asleep && !document.body.classList.contains('mini')) {
       this.lastFact = now;
@@ -464,6 +466,14 @@ class AnkiFly {
   }
 }
 
+// A canvas that has ever had a WebGL context can't hand out a 2D one, so the 2D fallback gets a fresh canvas.
+function freshCanvas(old) {
+  const c = document.createElement('canvas');
+  c.id = old.id; c.title = old.title; c.className = old.className;
+  old.replaceWith(c);
+  return c;
+}
+
 async function makeSprite(canvas) {
   try {
     if (!window.THREE) throw new Error('three.js not loaded');
@@ -473,7 +483,7 @@ async function makeSprite(canvas) {
     return sp;
   } catch (e) {
     console.warn('[anki-fly] 3D fly unavailable, using 2D sprite:', e.message);
-    return new FlySprite2D(canvas);
+    return new FlySprite2D(freshCanvas(canvas));
   }
 }
 

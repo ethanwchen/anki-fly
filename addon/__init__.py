@@ -215,9 +215,12 @@ class FlyWidget(QObject):
     @safe
     def toggle_visible(self) -> None:
         """Ctrl+Shift+F / Tools menu: hide for this session, or bring back (and un-minimize)."""
-        if self.closed_this_session or self.minimized:
+        if self.closed_this_session or self.minimized or not self.web.isVisible():
             self.closed_this_session = False
             self.set_minimized(False)
+            if getattr(self, "too_small", False):
+                from aqt.utils import tooltip
+                tooltip("The Anki window is too small for the fly; make it bigger.", period=2500)
         else:
             self.closed_this_session = True
             self.update_visibility()
