@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # Build dist/anki-fly.ankiaddon (a zip of the addon/ folder contents, without the folder itself).
 set -e
 cd "$(dirname "$0")"
