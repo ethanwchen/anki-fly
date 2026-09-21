@@ -1,7 +1,7 @@
 // Anki Fly: glue between Anki events, the LIF sim, the brain view and the fly sprite.
 import { Sim, parseGraph } from './sim.js';
 import { BrainView } from './brain_view.js';
-import { FlySprite } from './fly_sprite.js';
+import { FlySprite } from './fly3d.js';
 
 const $ = (id) => document.getElementById(id);
 // Anki injects window.pycmd at DocumentReady, after module scripts run, so check lazily.
@@ -62,7 +62,10 @@ class AnkiFly {
     meta.denseGroups = this.kcSet;
     this.brain = new BrainView($('brain'), meta);
     this.sprite = new FlySprite($('fly'));
-    $('count').textContent = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses`;
+    if (this.sprite.setScene) this.sprite.setScene('study');
+    this.brainTitle = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses from MaleCNS v1.0`;
+    $('brain').title = this.brainTitle + '. Hover a dot to see which neuron it is.';
+    this.updateSession();
     window.addEventListener('resize', () => { this.brain.resize(); this.sprite.resize(); });
     this.wireControls();
     this.lastFrame = performance.now();
@@ -79,9 +82,16 @@ class AnkiFly {
   }
 
   wireControls() {
-    $('btn-min').onclick = (e) => { e.stopPropagation(); py('fly:minimize'); };
-    $('btn-close').onclick = (e) => { e.stopPropagation(); py('fly:close'); };
-    $('btn-exam').onclick = (e) => { e.stopPropagation(); py('fly:exam'); };
+    const menu = $('menu');
+    const closeMenu = () => menu.classList.remove('open');
+    $('gear').onclick = (e) => { e.stopPropagation(); menu.classList.toggle('open'); };
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    const item = (id, fn) => { $(id).onclick = (e) => { e.stopPropagation(); closeMenu(); fn(); }; };
+    item('m-focus', () => py(this.cfg.focus ? 'fly:focus:off' : 'fly:focus:on'));
+    item('m-exam', () => py('fly:exam'));
+    item('m-min', () => py('fly:minimize'));
+    item('m-close', () => py('fly:close'));
     $('panel').onclick = () => { if (document.body.classList.contains('mini')) py('fly:restore'); };
     // hover over the brain: name the nearest neuron
     const brain = $('brain');
@@ -108,7 +118,7 @@ class AnkiFly {
   }
 
   say(text, ms = 3200) {
-    if (!this.cfg.bubbles) return;
+    if (!this.cfg.bubbles || this.cfg.focus) return;
     const b = $('bubble');
     b.textContent = text; b.classList.add('show');
     clearTimeout(this.bubbleTimer);
@@ -119,7 +129,7 @@ class AnkiFly {
     // Low spontaneous activity across a random sample of neurons.
     const n = this.meta.n, idx = [];
     for (let k = 0; k < Math.max(20, n / 200); k++) idx.push((Math.random() * n) | 0);
-    const asleep = this.state === 'sleep';
+    const asleep = this.state === 'sleep' || this.state === 'sleepDesk';
     this.sim.stimulate(idx, asleep ? 4 : 12, 2100);
   }
 
@@ -133,6 +143,9 @@ class AnkiFly {
         Object.assign(this.cfg, ev.cfg || {});
         $('memory').style.display = this.cfg.showMemory ? '' : 'none';
         document.body.classList.toggle('mini', !!this.cfg.minimized);
+        document.body.classList.toggle('focus', !!this.cfg.focus);
+        $('focus-on').textContent = this.cfg.focus ? '● on' : '';
+        if (this.cfg.focus) { $('bubble').classList.remove('show'); this.setStatus('deep focus · the fly is studying quietly'); }
         this.brain.resize(); this.sprite.resize();
         break;
       case 'amnesia':
@@ -165,6 +178,7 @@ class AnkiFly {
         const kcActive = g.KC.filter(i => sim.elig[i] > 0.2);
         this.session.cards++;
         const secs = ev.ms ? (ev.ms / 1000).toFixed(0) + 's' : '';
+        this.force(ease === 1 ? 'pressAgain' : 'pressGood', 750);
         if (ease >= 3) {
           sim.stimulate(g.PAM, 60, 400);
           const changed = sim.dopamine(1, ease === 4 ? 1.3 : 1.0);
@@ -174,6 +188,7 @@ class AnkiFly {
           this.setStatus(`reward · PAM dopamine · ${changed} KC→MBON synapses depressed`);
           this.say(ease === 4 ? `easy! ${changed} synapses rewired. streak ${this.streak}` : `sweet. PAM fired, ${changed} synapses weaker. ${secs}`);
           if (this.streak > 0 && this.streak % 5 === 0) this.sugar();
+          else if (this.streak > 0 && this.streak % 3 === 0) setTimeout(() => this.force('celebrate', 900), 800);
         } else if (ease === 1) {
           sim.stimulate(g.PPL1, 60, 400);
           const changed = sim.dopamine(0, 1.0);
@@ -201,6 +216,7 @@ class AnkiFly {
         }
         this.clearOdor();
         this.updateMemoryBar();
+        this.updateSession();
         break;
       }
       case 'wake': this.loom(); break;
@@ -257,6 +273,7 @@ class AnkiFly {
 
   // ---------- behavior readout ----------
   chooseState(now) {
+    if (this.cfg.focus) return 'still';
     if (this.forcedState) {
       if (now < this.forcedState.until) return this.forcedState.state;
       this.forcedState = null;
@@ -267,16 +284,18 @@ class AnkiFly {
     if (gf > 20) return 'startle';
     if (mn9 > 15) return 'proboscis';
     const idleMs = now - this.lastEvent;
-    if (idleMs > this.cfg.sleepSeconds * 1000) return 'sleep';
+    if (idleMs > this.cfg.sleepSeconds * 1000) return this.sprite.setScene ? 'sleepDesk' : 'sleep';
     if (groom > 8) return 'groom';
     if (walk > 8) return 'walk';
     if (idleMs > this.cfg.idleSeconds * 1000) {
       // scripted idle behaviors, gently stimulating the real circuits so the brain shows it
+      if (this.sprite.setScene) { const ph = Math.floor(idleMs / 15000) % 4; if (ph === 3 && g.DNg11?.length && Math.random() < 0.02) sim.stimulate(g.DNg11, 40, 800); return ph === 3 ? 'groom' : 'study'; }
       const phase = Math.floor(idleMs / 9000) % 3;
       if (phase === 1) { if (g.DNg11?.length && Math.random() < 0.02) sim.stimulate(g.DNg11, 40, 800); return 'groom'; }
       if (phase === 2) { if (g.DNp09?.length && Math.random() < 0.02) sim.stimulate(g.DNp09, 40, 800); return 'walk'; }
       return 'idle';
     }
+    if (this.sprite.setScene) return 'study';
     return this.odorIdx ? 'idle' : (Math.sin(now / 7000) > 0.6 ? 'walk' : 'idle');
   }
 
@@ -284,7 +303,8 @@ class AnkiFly {
   frame(now) {
     const wall = Math.min(60, now - this.lastFrame);
     this.lastFrame = now;
-    const simMs = wall * this.cfg.speed * (this.state === 'sleep' ? 0.4 : 1);
+    const asleep = this.state === 'sleep' || this.state === 'sleepDesk';
+    const simMs = wall * this.cfg.speed * (asleep ? 0.4 : 1);
     const steps = Math.max(1, Math.round(simMs / this.sim.p.dt));
     let spikes = 0;
     for (let s = 0; s < steps; s++) {
@@ -299,14 +319,19 @@ class AnkiFly {
     this.sprite.update(wall);
     this.sprite.draw();
     this.brain.draw(wall);
-    if (now - this.lastEvent > 20000 && now - this.lastFact > 45000 && st !== 'sleep' && !document.body.classList.contains('mini')) {
+    if (!this.cfg.focus && now - this.lastEvent > 20000 && now - this.lastFact > 45000 && !asleep && !document.body.classList.contains('mini')) {
       this.lastFact = now;
       this.say(FACTS[this.factIdx++ % FACTS.length], 7000);
     }
     if ((this.frameNo = (this.frameNo | 0) + 1) % 15 === 0) {
-      $('hz').textContent = `${st} · ${(spikes * 1000 / Math.max(1, simMs) / this.meta.n).toFixed(2)} Hz/neuron`;
+      $('hz').textContent = `${(spikes * 1000 / Math.max(1, simMs) / this.meta.n).toFixed(1)} Hz`; $('hz').title = 'mean firing rate per neuron';
     }
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  updateSession() {
+    const s = this.session, k = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+    $('session').textContent = s.cards ? `${s.cards} cards · ${s.again} stung · ${k(s.synapses)} synapses rewired` : `${Object.keys(this.memory).length} cards remembered`;
   }
 
   setStatus(s, hover = false) {
@@ -346,6 +371,7 @@ class AnkiFly {
     this.stats = data.stats || this.stats;
     this.streak = data.streak || 0;
     this.setStatus(`remembering ${Object.keys(this.memory).length} cards`);
+    this.updateSession();
   }
 }
 
@@ -367,4 +393,5 @@ if (new URLSearchParams(location.search).has('dev') || location.protocol === 'fi
   btn('Loom', () => fly.event({ type: 'wake' }));
   btn('Sugar', () => fly.event({ type: 'sugar' }));
   btn('Sleep', () => { fly.lastEvent = performance.now() - 1e6; });
+  btn('Focus', () => fly.event({ type: 'config', cfg: { focus: !fly.cfg.focus } }));
 }

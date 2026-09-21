@@ -1,12 +1,14 @@
 {
   "enabled": true,
   "corner": "bottom-right",
-  "width": 330,
-  "height": 150,
+  "width": 400,
+  "height": 200,
   "margin": 12,
   "opacity": 0.95,
   "show_outside_review": true,
   "show_memory_bar": true,
+  "thought_bubbles": true,
+  "focus_mode": false,
   "sim_speed": 1.0,
   "idle_seconds": 60,
   "sleep_seconds": 240

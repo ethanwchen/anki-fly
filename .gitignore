@@ -5,3 +5,4 @@ __pycache__/
 tools/cache/
 addon/user_files/memory.json*
 addon/meta.json
+addon/user_files/state.json

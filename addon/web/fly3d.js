@@ -8,11 +8,12 @@
 // femur / tibia / 5 tarsal segments), head, antennae, proboscis (rostrum / haustellum /
 // labella), wings (yaw/roll/pitch), halteres and 7 abdominal segments.
 
+import { FlySprite as FlySprite2D } from './fly_sprite.js';
+
 const THREE = window.THREE;
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = (t) => t * t * (3 - 2 * t);
 const ease01 = (t) => smooth(clamp(t, 0, 1));
 
@@ -51,15 +52,7 @@ function eyeNormalMap() {
     for (let col = -1; col < N / cell + 2; col++) {
       const cx = col * cell + (row & 1 ? cell / 2 : 0), cy = row * h;
       const R = cell * 0.5;
-      // radial normal: each facet is a little dome
-      for (let k = 0; k < 5; k++) {
-        const rr = R * (1 - k / 5), a = (k + 1) / 5;
-        const grad = g.createRadialGradient(cx, cy, 0, cx, cy, rr);
-        grad.addColorStop(0, `rgba(128,128,255,${0.0})`);
-        grad.addColorStop(1, `rgba(128,128,255,${a * 0.0})`);
-        void grad;
-      }
-      // approximate dome normals with 4 offset shaded arcs
+      // each facet is a little dome: approximate its normals with 4 tilted quadrant wedges
       for (let s = 0; s < 4; s++) {
         const ang = s * Math.PI / 2;
         const nx = Math.round(128 + 60 * Math.cos(ang)), ny = Math.round(128 - 60 * Math.sin(ang));
@@ -82,6 +75,36 @@ const POSE = {
   abdGroomR: { coxa_abduct_T3_right: -0.4, coxa_twist_T3_right: -0.09, coxa_T3_right: 0.76, femur_twist_T3_right: 0.44, femur_T3_right: -0.96, tibia_T3_right: -1.06, tarsus_T3_right: 0.53 },
   abdGroomL: { coxa_abduct_T3_left: 0.25, coxa_twist_T3_left: -0.16, coxa_T3_left: 0.76, femur_twist_T3_left: 0.44, femur_T3_left: -0.96, tibia_T3_left: -1.06, tarsus_T3_left: -0.2 },
 };
+
+// scene states (the fly stays at its desk), auto-chains and how 'sleep' maps when a scene is set
+const SCENE_STATES = new Set(['study', 'pressAgain', 'pressGood', 'celebrate', 'think', 'write', 'sleepDesk', 'still']);
+const ALL_STATES = new Set(['idle', 'walk', 'groom', 'proboscis', 'sleep', 'startle', 'fly', ...SCENE_STATES]);
+const CHAIN = { pressAgain: ['study', 700], pressGood: ['study', 700], celebrate: ['study', 800], write: ['think', 800] };
+
+function cardTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 80;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f7f4ea'; g.fillRect(0, 0, 128, 80);
+  g.strokeStyle = '#d9534f'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 18); g.lineTo(128, 18); g.stroke();
+  g.strokeStyle = '#9fb7d9'; g.lineWidth = 1;
+  for (let y = 34; y < 80; y += 12) { g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke(); }
+  g.strokeStyle = '#3b3f4a'; g.lineWidth = 1.6; g.beginPath();
+  g.moveTo(10, 30); g.bezierCurveTo(30, 22, 50, 38, 70, 30); g.bezierCurveTo(85, 25, 100, 34, 118, 29); g.stroke();
+  g.beginPath(); g.moveTo(10, 42); g.bezierCurveTo(30, 36, 45, 48, 60, 42); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function paperTexture() {
+  const c = document.createElement('canvas'); c.width = 160; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fbfaf5'; g.fillRect(0, 0, 160, 128);
+  g.fillStyle = '#22252e'; g.font = 'bold 20px ui-sans-serif, system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('EXAM', 80, 24);
+  g.strokeStyle = '#22252e'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(20, 30); g.lineTo(140, 30); g.stroke();
+  g.strokeStyle = '#c9d3e6'; g.lineWidth = 1;
+  for (let y = 48; y < 128; y += 14) { g.beginPath(); g.moveTo(14, y); g.lineTo(146, y); g.stroke(); }
+  g.fillStyle = '#3b3f4a'; g.font = '9px ui-sans-serif, system-ui, sans-serif'; g.textAlign = 'left';
+  g.fillText('1.  ____________', 16, 45); g.fillText('2.  ____________', 16, 59); g.fillText('3.  ____________', 16, 73);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 
 // ---------- binary loader ----------
 async function loadFlyBin(url) {
@@ -106,6 +129,14 @@ async function loadFlyBin(url) {
 // ---------- the sprite ----------
 export class FlySprite {
   constructor(canvas) {
+    if (!THREE) return FlySprite.fallback(canvas, 'three.js not loaded');
+    try { this.init(canvas); } catch (e) { return FlySprite.fallback(canvas, e && e.message); }
+  }
+  static fallback(canvas, why) {
+    console.warn('[fly3d] falling back to 2D sprite:', why);
+    return new FlySprite2D(canvas);
+  }
+  init(canvas) {
     this.canvas = canvas;
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.state = 'idle'; this.stateT = 0; this.prevState = 'idle'; this.blendT = 1;
@@ -113,11 +144,12 @@ export class FlySprite {
     this.ready = false; this.failed = false;
     this.J = {};                 // joint name -> {body, i, v}
     this.bodies = [];            // Object3D per MuJoCo body
-    this.wakeSway = 0;
     this.legShift = { t: 0, leg: 0, a: 0 };
     this.groomMode = 0; this.groomT = 0;
     this.antT = 0; this.antA = 0;
     this.fovY = 28;
+    this.sceneName = null; this.sceneGroup = null; this.props = {}; this.reach = {};
+    this.tapT = 2000; this.tapA = 0; this.needsRender = true; this.lastRequested = 'idle';
 
     this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(this.dpr);
@@ -129,6 +161,7 @@ export class FlySprite {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(this.fovY, 0.6, 0.5, 30);
     this.world = new THREE.Group(); this.scene.add(this.world);   // ground-level frame
+    this.stage = new THREE.Group(); this.world.add(this.stage);   // desk props, oriented like the fly
     this.mover = new THREE.Group(); this.world.add(this.mover);   // translates/turns the fly
     this.lift = new THREE.Group(); this.mover.add(this.lift);     // vertical hops / crouch
     this.root = new THREE.Group(); this.lift.add(this.root);      // z-up MuJoCo -> y-up
@@ -151,17 +184,154 @@ export class FlySprite {
     const zt = glyphTexture('z', 'rgba(205,215,255,0.95)');
     for (let i = 0; i < 3; i++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: zt, transparent: true, depthTest: false }));
-      s.visible = false; this.world.add(s); this.zzz.push(s);
+      s.visible = false; s.renderOrder = 10; this.world.add(s); this.zzz.push(s);
     }
     this.sparks = [];
     const st = sparkTexture();
     for (let i = 0; i < 6; i++) {
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: st, transparent: true, depthTest: false, blending: THREE.AdditiveBlending }));
-      s.visible = false; s.scale.set(0.12, 0.12, 1); this.world.add(s); this.sparks.push(s);
+      s.visible = false; s.renderOrder = 10; s.scale.set(0.12, 0.12, 1); this.world.add(s); this.sparks.push(s);
     }
 
     this.resize();
     loadFlyBin(new URL('vendor/fly.bin', import.meta.url)).then(d => this.build(d)).catch(e => { this.failed = true; console.error('[fly3d]', e); });
+  }
+
+  // ---------- scenes ----------
+  setScene(name) {
+    name = name || null;
+    if (name === this.sceneName) return;
+    if (this.sceneGroup) { this.stage.remove(this.sceneGroup); this.sceneGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    if (this.lampLight) { this.scene.remove(this.lampLight); this.lampLight = null; }
+    this.sceneGroup = null; this.props = {}; this.reach = {}; this.sceneName = name;
+    if (name === 'study') this.buildStudy(); else if (name === 'exam') this.buildExam();
+    if (name && !SCENE_STATES.has(this.state)) this.setState(this.state === 'sleep' ? 'sleepDesk' : 'study');
+    this.needsRender = true;
+    this.layout();
+  }
+
+  // stage frame: x = fly forward, z = fly right, y up; desk top is y = 0
+  buildStudy() {
+    const G = this.sceneGroup = new THREE.Group(); this.stage.add(G);
+    const wood = new THREE.MeshStandardMaterial({ color: 0xa8743f, roughness: 0.75 });
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.14, 2.2), wood); desk.position.set(0.2, -0.07, 0); G.add(desk);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.04, 2.2), new THREE.MeshStandardMaterial({ color: 0x8c6238, roughness: 0.8 }));
+    edge.position.set(0.2, -0.16, 0); G.add(edge);
+    // index cards: a small stack, top one face up with writing
+    const cardMat = new THREE.MeshStandardMaterial({ color: 0xf2eee2, roughness: 0.9 });
+    const stack = new THREE.Group(); stack.position.set(0.48, 0, -0.36); stack.rotation.y = 0.25; G.add(stack);
+    for (let i = 0; i < 5; i++) {
+      const c = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.012, 0.26), cardMat);
+      c.position.set((Math.sin(i * 2.1)) * 0.012, 0.006 + i * 0.012, (Math.cos(i * 1.7)) * 0.012); c.rotation.y = (i - 2) * 0.05; stack.add(c);
+    }
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.26), new THREE.MeshStandardMaterial({ map: cardTexture(), roughness: 0.9 }));
+    top.rotation.x = -Math.PI / 2; top.position.set(0, 0.0125 + 5 * 0.012, 0); stack.add(top);
+    this.props.card = stack;
+    // two buttons: red (Again) and green (Good)
+    const mkButton = (color, x, z) => {
+      const g = new THREE.Group(); g.position.set(x, 0, z); G.add(g);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.125, 0.04, 24), new THREE.MeshStandardMaterial({ color: 0x3a3d46, roughness: 0.6, metalness: 0.3 }));
+      base.position.y = 0.02; g.add(base);
+      const capMat = new THREE.MeshPhysicalMaterial({ color, roughness: 0.5, clearcoat: 0.6, emissive: color, emissiveIntensity: 0.04 });
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.06, 24), capMat); cap.position.y = 0.04 + 0.03; g.add(cap);
+      return { g, cap, capMat, restY: cap.position.y };
+    };
+    this.props.again = mkButton(0xb3211a, 0.56, -0.02);
+    this.props.good = mkButton(0x1f8f3f, 0.56, 0.3);
+    // desk lamp at the back-right corner
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0x2d3038, roughness: 0.5, metalness: 0.5 });
+    const lamp = new THREE.Group(); lamp.position.set(-0.6, 0, 0.3); lamp.scale.setScalar(0.9); G.add(lamp);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.04, 20), lampMat); foot.position.y = 0.02; lamp.add(foot);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.6, 8), lampMat); pole.position.y = 0.32; lamp.add(pole);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.34, 8), lampMat);
+    arm.position.set(0.14, 0.62, -0.1); arm.rotation.z = -1.2; arm.rotation.x = 0.6; lamp.add(arm);
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.2, 20, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x2f6b4c, roughness: 0.55, side: THREE.DoubleSide, emissive: 0xffc070, emissiveIntensity: 0.15 }));
+    shade.position.set(0.3, 0.6, -0.1); shade.rotation.z = 0.55; shade.rotation.x = -0.25; lamp.add(shade);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff1c8 }));
+    bulb.position.set(0.33, 0.53, -0.12); lamp.add(bulb);
+    this.lampLight = new THREE.PointLight(0xffc98a, 2.6, 2.2, 1.5);
+    G.add(this.lampLight); this.lampLight.position.set(-0.3, 0.45, 0.2);
+    this.lampWorldLight = true;
+    // fly heading for this scene: 3/4 toward the viewer
+    this.sceneYaw = this.az - Math.PI / 2 + 0.55;   // az - pi/2 faces the camera; +0.55 turns it toward screen-right
+    this.reachTargets = {
+      again: () => this.stageToWorld(0.56, 0.11, -0.02),
+      good: () => this.stageToWorld(0.56, 0.11, 0.3),
+      card: () => this.stageToWorld(0.4, 0.09, -0.3),
+    };
+  }
+
+  buildExam() {
+    const G = this.sceneGroup = new THREE.Group(); this.stage.add(G);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.12, 2.0), new THREE.MeshStandardMaterial({ color: 0x4d5a52, roughness: 0.85 }));
+    top.position.set(0.3, -0.06, 0); G.add(top);
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.05, 2.0), new THREE.MeshStandardMaterial({ color: 0x2f3a34, roughness: 0.9 }));
+    rim.position.set(0.3, -0.145, 0); G.add(rim);
+    // exam sheet
+    // sheet squared to the viewer (its x axis parallel to the camera's right vector) so the header reads
+    const paper = new THREE.Group(); paper.position.set(0.72, 0.006, 0.12); paper.rotation.y = Math.PI / 2 - 0.6; G.add(paper);
+    const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.01, 0.58), new THREE.MeshStandardMaterial({ color: 0xfbfaf5, roughness: 0.95 })); paper.add(sheet);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.58), new THREE.MeshStandardMaterial({ map: paperTexture(), roughness: 0.95 }));
+    face.rotation.x = -Math.PI / 2; face.position.y = 0.0055; paper.add(face);
+    this.props.paper = paper;
+    // pencil: tip at the group origin, shaft along +z; oriented each frame toward the holding claw
+    const pencil = new THREE.Group(); G.add(pencil); this.props.pencil = pencil;
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 6), new THREE.MeshStandardMaterial({ color: 0xe8b62a, roughness: 0.6 }));
+    shaft.rotation.x = Math.PI / 2; shaft.position.z = 0.3; pencil.add(shaft);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.06, 6), new THREE.MeshStandardMaterial({ color: 0xd8c9a6, roughness: 0.7 }));
+    tip.rotation.x = -Math.PI / 2; tip.position.z = 0.03; pencil.add(tip);
+    const lead = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.02, 6), new THREE.MeshStandardMaterial({ color: 0x222222 }));
+    lead.rotation.x = -Math.PI / 2; lead.position.z = 0.01; pencil.add(lead);
+    const eraser = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.021, 0.05, 6), new THREE.MeshStandardMaterial({ color: 0xe58a9a, roughness: 0.8 }));
+    eraser.rotation.x = Math.PI / 2; eraser.position.z = 0.575; pencil.add(eraser);
+    const ferrule = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.03, 6), new THREE.MeshStandardMaterial({ color: 0xb8b8c0, metalness: 0.7, roughness: 0.4 }));
+    ferrule.rotation.x = Math.PI / 2; ferrule.position.z = 0.54; pencil.add(ferrule);
+    this.pencilTip = new THREE.Vector3(0.62, 0.012, 0.05);   // stage coords, on the paper
+    this.sceneYaw = this.az - Math.PI / 2 + 0.6;
+    this.reachTargets = { pencil: () => this.stageToWorld(0.55, 0.2, 0.06) };
+  }
+
+  stageToWorld(x, y, z) { this.stage.updateWorldMatrix(true, false); return this.stage.localToWorld(new THREE.Vector3(x, y, z)); }
+
+  // coordinate-descent IK: pose (joint -> offset) that brings the claw of a leg to a world-space target
+  solveReach(seg, side, target) {
+    const names = [`coxa_abduct_${seg}_${side}`, `coxa_twist_${seg}_${side}`, `coxa_${seg}_${side}`, `femur_twist_${seg}_${side}`, `femur_${seg}_${side}`, `tibia_${seg}_${side}`, `tarsus_${seg}_${side}`];
+    const claw = this.byName[`claw_${seg}_${side}`];
+    const vals = {}; for (const n of names) vals[n] = 0;
+    const tip = new THREE.Vector3();
+    const cost = () => {
+      for (const k in this.J) this.J[k].v = 0;
+      for (const n of names) this.J[n].v = vals[n];
+      this.applyJoints(); this.root.updateWorldMatrix(true, true);
+      claw.getWorldPosition(tip);
+      let c = tip.distanceTo(target);
+      for (const n of names) { const j = this.J[n], a = j.ref + vals[n]; if (a < j.lo) c += (j.lo - a) * 0.5; if (a > j.hi) c += (a - j.hi) * 0.5; }
+      return c;
+    };
+    let best = cost(), step = 0.5;
+    for (let it = 0; it < 40; it++) {
+      let improved = false;
+      for (const n of names) for (const d of [step, -step]) {
+        vals[n] += d; const c = cost();
+        if (c < best - 1e-6) { best = c; improved = true; } else vals[n] -= d;
+      }
+      if (!improved) step *= 0.6;
+      if (step < 0.01) break;
+    }
+    for (const k in this.J) this.J[k].v = 0;
+    return vals;
+  }
+
+  // lazily solve the reach poses for the current scene (needs the fly parked in its scene pose)
+  ensureReach() {
+    if (!this.ready || !this.sceneName || this.reach.done) return;
+    this.mover.rotation.y = this.sceneYaw; this.mover.position.x = 0; this.lift.position.y = 0; this.lift.rotation.set(0, 0, 0);
+    this.stage.rotation.y = this.sceneYaw; this.stage.updateWorldMatrix(true, true);
+    this.mover.updateWorldMatrix(true, true);
+    for (const k in this.reachTargets) this.reach[k] = this.solveReach('T1', 'right', this.reachTargets[k]());
+    this.reach.done = true;
+    // parking pose for the pencil-holding leg is the same solve
   }
 
   // ---------- model construction ----------
@@ -293,45 +463,77 @@ export class FlySprite {
   }
 
   layout() {
-    // 3/4 view from slightly above; fly length ~1 should fill ~70% of the width.
     const aspect = this.camera.aspect;
-    const wantW = 1.0 / 0.80;
-    const visH = Math.max(wantW / aspect, 1.6);
+    let visH, el, az, look;
+    if (this.sceneName === 'study') {
+      // sitting at the desk, seen from a bit higher; fly fills ~75% of the height
+      visH = 1.55; el = 0.72; az = 0.85; look = new THREE.Vector3(0.12, 0.02 + visH * 0.05, 0.02);
+    } else if (this.sceneName === 'exam') {
+      visH = 1.25; el = 0.7; az = 0.95; look = new THREE.Vector3(0.3, 0.02 + visH * 0.03, 0.12);
+    } else {
+      // free-standing: 3/4 view from slightly above; fly length ~1 fills ~80% of the width
+      const wantW = 1.0 / 0.80;
+      visH = Math.max(wantW / aspect, 1.6); el = 0.72; az = 0.95; look = new THREE.Vector3(0, 0.12 + visH * 0.13, 0);
+    }
     const dist = (visH / 2) / Math.tan(this.fovY / 2 * Math.PI / 180);
-    this.camDist = dist;
-    const el = 0.72, az = 0.95;   // elevation, azimuth
+    this.camDist = dist; this.az = az;
     this.camera.position.set(Math.sin(az) * Math.cos(el) * dist, Math.sin(el) * dist, Math.cos(az) * Math.cos(el) * dist);
-    this.lookAt = new THREE.Vector3(0, 0.12 + visH * 0.13, 0);
+    this.lookAt = look;
     this.camera.lookAt(this.lookAt);
     this.visW = visH * aspect;
     this.visH = visH;
-    // fly heading: screen-right (or left) turned ~25 deg toward the viewer
+    if (this.sceneName === 'study') this.sceneYaw = az - Math.PI / 2 + 0.55;
+    if (this.sceneName === 'exam') this.sceneYaw = az - Math.PI / 2 + 0.6;
+    this.reach = {};   // camera/heading changed: re-solve reaches lazily
+    this.needsRender = true;
+    // fly heading when free: screen-right (or left) turned ~25 deg toward the viewer
     this.yawR = az - 0.45; this.yawL = az + Math.PI + 0.45;
   }
 
+  // Repeated calls with the same name are idempotent, even after an auto-chain (pressGood -> study)
+  // has already moved on, so a caller that sets the state every frame does not restart the animation.
   setState(s) {
-    if (s !== this.state) { this.prevState = this.state; this.state = s; this.stateT = 0; this.blendT = 0; }
+    if (!ALL_STATES.has(s)) s = 'idle';
+    if (s === this.lastRequested) return;
+    this.lastRequested = s;
+    this._go(s);
+  }
+  _go(s) {
+    if (this.sceneName && s === 'sleep') s = 'sleepDesk';
+    if (!this.sceneName && SCENE_STATES.has(s)) s = s === 'sleepDesk' ? 'sleep' : 'idle';
+    if (s !== this.state) { this.prevState = this.state; this.state = s; this.stateT = 0; this.blendT = 0; this.needsRender = true; }
   }
 
   update(dt) {
     dt = Math.min(dt, 80);
-    this.t += dt; this.stateT += dt; this.blendT = Math.min(1, this.blendT + dt / 260);
     const s = this.state;
+    if (s === 'still') { if (!this.ready) return; if (!this.stillPosed) { this.pose(0); this.applyJoints(); this.stillPosed = true; this.needsRender = true; } return; }
+    this.stillPosed = false;
+    this.t += dt; this.stateT += dt; this.blendT = Math.min(1, this.blendT + dt / 260);
+    const chain = CHAIN[s];
+    if (chain && this.stateT >= chain[1]) { this._go(chain[0]); }
     if (s === 'walk') {
       this.x += this.dir * dt * 0.00011;
-      if (this.x > 0.72) this.dir = -1; else if (this.x < 0.28) this.dir = 1;
+      const lo = this.sceneName ? 0.36 : 0.28, hi = this.sceneName ? 0.64 : 0.72;
+      if (this.x > hi) this.dir = -1; else if (this.x < lo) this.dir = 1;
     } else if (s === 'fly') {
-      this.x += ((0.5 + Math.sin(this.t / 900) * 0.18) - this.x) * Math.min(1, dt / 300);
+      this.x += ((0.5 + Math.sin(this.t / 900) * 0.09) - this.x) * Math.min(1, dt / 300);
+    } else if (SCENE_STATES.has(s)) {
+      this.x += (0.5 - this.x) * Math.min(1, dt / 300);
     }
     if (!this.ready) return;
+    this.ensureReach();
     this.pose(dt);
-    if (this.dbg) for (const k in this.dbg) this.addJ(k, this.dbg[k]);
+    if (this.dbg) for (const k in this.dbg) this.addJ(k, this.dbg[k]);   // dev hook: extra joint offsets
     this.applyJoints();
+    this.needsRender = true;
   }
 
   draw() {
     if (!this.ready) { this.renderer.clear(); return; }
+    if (!this.needsRender) return;          // 'still' renders once, then idles
     this.renderer.render(this.scene, this.camera);
+    this.needsRender = this.state !== 'still';
   }
 
   // ---------- posing ----------
@@ -341,11 +543,7 @@ export class FlySprite {
   // Measure, per leg, which joint/sign swings the foot forward and which lifts it,
   // so gait code is independent of the model's joint conventions.
   calibrateLegs() {
-    const tip = new THREE.Vector3(), inv = new THREE.Matrix4();
-    const footLocal = () => {
-      this.applyJoints(); this.root.updateWorldMatrix(true, true);
-      return tip.set(0, 0, 0);
-    };
+    const tip = new THREE.Vector3();
     this.legCal = {};
     for (const side of ['left', 'right']) for (const seg of ['T1', 'T2', 'T3']) {
       const claw = this.byName[`claw_${seg}_${side}`];
@@ -364,7 +562,6 @@ export class FlySprite {
       this.legCal[`${seg}_${side}`] = { swing, femurUp: Math.sign(fz) || 1, tibiaUp: Math.sign(tz) || 1 };
     }
     for (const k in this.J) this.J[k].v = 0;
-    void footLocal; void inv;
   }
 
   // gait helper: swing forward(+)/back(-), lift raises the foot (both in radians-ish)
@@ -387,19 +584,92 @@ export class FlySprite {
     let shadowA = 1, shadowS = 1;
     const e = ease01(this.blendT);   // blend-in of the current state
 
-    // ambient life: breathing, antenna twitches, haltere jitter
-    const breath = Math.sin(T * TAU * 0.55) * 0.5 + 0.5;
+    const still = s === 'still';
+    // ambient life: breathing, antenna twitches, haltere jitter (none at all when 'still')
+    const breath = still ? 0.5 : Math.sin(T * TAU * 0.55) * 0.5 + 0.5;
     this.antT -= dt;
     if (this.antT <= 0) { this.antT = 900 + Math.random() * 3200; this.antA = 1; }
     this.antA = Math.max(0, this.antA - dt / 350);
-    const antTw = Math.sin(this.antA * Math.PI) * 0.25;
+    const antTw = still ? 0 : Math.sin(this.antA * Math.PI) * 0.25;
     this.addJ('antenna_left', antTw); this.addJ('antenna_right', antTw * 0.7);
     this.addJ('antenna_abduct_left', -antTw * 0.5); this.addJ('antenna_abduct_right', antTw * 0.5);
     for (let k = 2; k <= 7; k++) this.addJ(`abdomen_${k}`, -0.03 + breath * 0.04);
     this.addJ('abdomen', -0.02 + breath * 0.03);
-    this.addJ('haltere_left', Math.sin(T * 9) * 0.05); this.addJ('haltere_right', Math.cos(T * 8) * 0.05);
+    if (!still) { this.addJ('haltere_left', Math.sin(T * 9) * 0.05); this.addJ('haltere_right', Math.cos(T * 8) * 0.05); }
+    let pressBtn = null, pressAmt = 0, pencilHold = 0, scribble = null;
 
-    if (s === 'idle') {
+    if (SCENE_STATES.has(s)) {
+      // ---- desk states ----
+      const R = this.reach;
+      if (s === 'study' || s === 'still' || s === 'pressAgain' || s === 'pressGood' || s === 'celebrate') {
+        // looking down at the face-up card
+        this.addJ('head', -0.32); this.addJ('head_abduct', 0.18);
+        bodyY = still ? 0 : breath * 0.005;
+        if (s === 'study') {
+          this.tapT -= dt;
+          if (this.tapT <= 0) { this.tapT = 2600 + Math.random() * 4000; this.tapA = 1; }
+          this.tapA = Math.max(0, this.tapA - dt / 700);
+          if (this.tapA > 0 && R.card) {
+            const k = Math.sin(this.tapA * Math.PI), tap = Math.max(0, Math.sin(this.tapA * TAU * 2)) * 0.12;
+            this.applyPose(R.card, k); this.addJ('tibia_T1_right', tap * k);
+          }
+          if (!still) { this.addJ('head_twist', Math.sin(T * 0.6) * 0.06); this.addJ('head', Math.sin(T * 0.45) * 0.03); }
+        } else if (s === 'pressAgain' || s === 'pressGood') {
+          // reach (0-250) -> press (250-450) -> return (450-700)
+          const reach = ease01(st / 250) * (1 - ease01((st - 450) / 250));
+          pressAmt = ease01((st - 250) / 90) * (1 - ease01((st - 420) / 120));
+          pressBtn = s === 'pressAgain' ? 'again' : 'good';
+          const P = R[pressBtn]; if (P) this.applyPose(P, reach);
+          this.addJ('tibia_T1_right', pressAmt * 0.18 * reach); this.addJ('femur_T1_right', pressAmt * 0.08 * reach);
+          this.addJ('head', 0.12 * reach); this.addJ('head_abduct', -0.25 * reach);   // watch the button
+          pitch = 0.03 * reach; bodyY -= 0.006 * pressAmt;
+        } else if (s === 'celebrate') {
+          const k = ease01(st / 80) * (1 - ease01((st - 550) / 250));
+          const hop = Math.max(0, Math.sin(clamp(st - 60, 0, 480) / 480 * Math.PI));
+          bodyY += hop * 0.11; wingSpread = k * 0.55;
+          const flick = Math.sin(st / 1000 * TAU * 6) * 0.15 * k;
+          this.addJ('wing_yaw_left', flick); this.addJ('wing_yaw_right', flick);
+          this.addJ('head', 0.45 * k); pitch = -0.08 * hop;
+          for (const side of ['left', 'right']) this.leg('T1', side, { lift: hop * 0.5, swing: 0.2 * hop });
+          for (let j = 2; j <= 7; j++) this.addJ(`abdomen_${j}`, -0.05 * k);
+          shadowA = 1 - hop * 0.4; shadowS = 1 + hop * 0.3;
+        }
+      } else if (s === 'think' || s === 'write') {
+        pencilHold = 1;
+        if (R.pencil) this.applyPose(R.pencil, 1);
+        this.addJ('head', -0.25); this.addJ('head_abduct', 0.15);
+        bodyY = breath * 0.004;
+        if (s === 'think') {
+          // pencil tapping, head sway
+          const tap = Math.max(0, Math.sin(T * TAU * 1.4)) ** 3;
+          this.addJ('tibia_T1_right', -tap * 0.12); this.addJ('femur_T1_right', tap * 0.05);
+          this.addJ('head_twist', Math.sin(T * 0.9) * 0.12); this.addJ('head', Math.sin(T * 0.5) * 0.05 + 0.08 * Math.max(0, Math.sin(T * 0.25)));
+          scribble = { x: 0, z: 0, down: 1 - tap * 0.6 };
+        } else {
+          // scribbling: fast small strokes advancing along a line
+          const u = st / 800, f = T * TAU;
+          const sx = Math.sin(f * 7) * 0.02 + u * 0.16, sz = Math.cos(f * 5.3) * 0.025 - 0.08 + u * 0.05;
+          this.addJ('tibia_T1_right', Math.sin(f * 7) * 0.05); this.addJ('femur_T1_right', Math.cos(f * 5.3) * 0.03);
+          this.addJ('coxa_abduct_T1_right', Math.sin(f * 3.5) * 0.04);
+          this.addJ('head', 0.04 * Math.sin(f * 1.2)); this.addJ('head_abduct', 0.1 * u);
+          scribble = { x: sx, z: sz, down: 1 };
+        }
+      } else if (s === 'sleepDesk') {
+        const x = ease01(st / 1100);
+        const slow = Math.sin(T * TAU * 0.22) * 0.5 + 0.5;
+        bodyY = -0.05 * x + slow * 0.003; pitch = 0.24 * x; wingFlat = x;
+        this.addJ('head', -0.55 * x); this.addJ('head_abduct', 0.12 * x);
+        for (const side of ['left', 'right']) for (const seg of ['T1', 'T2', 'T3']) {
+          const c = this.legCal[`${seg}_${side}`];
+          this.addJ(`femur_${seg}_${side}`, -0.32 * x * c.femurUp);
+          this.addJ(`tibia_${seg}_${side}`, -0.28 * x * c.tibiaUp);
+          this.addJ(`tarsus_${seg}_${side}`, 0.15 * x);
+        }
+        for (const side of ['left', 'right']) this.leg('T1', side, { swing: 0.35 * x });   // front legs stretched forward on the desk
+        this.addJ('antenna_left', 0.4 * x); this.addJ('antenna_right', 0.4 * x);
+        for (let j = 2; j <= 7; j++) this.addJ(`abdomen_${j}`, 0.04 * x);
+      }
+    } else if (s === 'idle') {
       bodyY = breath * 0.006;
       const L = this.legShift; L.t -= dt;
       if (L.t <= 0) { L.t = 2500 + Math.random() * 5000; L.leg = (Math.random() * 6) | 0; L.a = 1; }
@@ -501,16 +771,16 @@ export class FlySprite {
     }
 
     // wings
-    if (wingBlur > 0) {
+    if (wingBlur > 0 || wingSpread > 0) {
       const flap = Math.sin(T * TAU * 27);       // aliased fast flap; ghosts give the fan look
       for (const side of ['left', 'right']) {
-        this.addJ(`wing_yaw_${side}`, -1.35 * wingSpread + flap * 0.55 * wingBlur);
-        this.addJ(`wing_roll_${side}`, -0.45 * wingSpread + flap * 0.35 * wingBlur);
+        this.addJ(`wing_yaw_${side}`, -1.25 * wingSpread + flap * 0.32 * wingBlur);
+        this.addJ(`wing_roll_${side}`, -0.4 * wingSpread + flap * 0.2 * wingBlur);
         this.addJ(`wing_pitch_${side}`, 0.35 * wingSpread);
       }
     } else if (wingFlat > 0) {
       for (const side of ['left', 'right']) { this.addJ(`wing_roll_${side}`, -0.25 * wingFlat); this.addJ(`wing_pitch_${side}`, 0.15 * wingFlat); }
-    } else {
+    } else if (!still) {
       // resting wings: tiny settle
       const w = Math.sin(T * 0.9) * 0.01;
       this.addJ('wing_roll_left', w); this.addJ('wing_roll_right', -w);
@@ -518,17 +788,43 @@ export class FlySprite {
     this.wingBlur = wingBlur; this.wingSpread = wingSpread;
 
     // body placement
-    const targetYaw = this.yawOverride !== undefined ? this.yawOverride : (this.dir > 0 ? this.yawR : this.yawL);
-    if (this.yaw === undefined) this.yaw = targetYaw;
+    const inScene = SCENE_STATES.has(s) && this.sceneName;
+    const targetYaw = this.yawOverride !== undefined ? this.yawOverride : inScene ? this.sceneYaw : (this.dir > 0 ? this.yawR : this.yawL);
+    if (this.yaw === undefined || still) this.yaw = targetYaw;
     let dy = targetYaw - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     this.yaw += dy * Math.min(1, dt / 220);
     this.mover.rotation.y = this.yaw + yaw;
+    if (this.sceneName) this.stage.rotation.y = this.sceneYaw;
+    // props: buttons depress + glow, pencil follows the holding claw
+    for (const b of ['again', 'good']) {
+      const B = this.props[b]; if (!B) continue;
+      const a = pressBtn === b ? pressAmt : 0;
+      B.cap.position.y = B.restY - 0.035 * a;
+      B.capMat.emissiveIntensity = 0.08 + 0.9 * a;
+    }
+    if (this.props.pencil) {
+      const pc = this.props.pencil;
+      if (pencilHold) {
+        pc.visible = true;
+        const tipS = this.pencilTip.clone();
+        if (scribble) { tipS.x += scribble.x; tipS.z += scribble.z; tipS.y += (1 - scribble.down) * 0.06; }
+        pc.position.copy(tipS);
+        this.mover.updateWorldMatrix(true, true);
+        const cw = this.byName.claw_T1_right.getWorldPosition(new THREE.Vector3());
+        this.stage.updateWorldMatrix(true, false);
+        pc.lookAt(cw);   // aims the pencil's +z (its shaft) from the tip on the paper toward the holding claw
+      } else {
+        // pencil lying on the paper
+        pc.visible = true; pc.position.set(this.pencilTip.x + 0.25, 0.03, this.pencilTip.z + 0.28); pc.rotation.set(0, 1.2, 0);
+      }
+    }
     this.mover.position.x = (this.x - 0.5) * this.visW;
     this.lift.position.y = bodyY;
     this.lift.rotation.z = pitch;   // MuJoCo x forward -> pitch about z after root rotation? root maps y->z; pitch about world z is a nose-up/down of a fly facing +x
     this.lift.rotation.x = roll;
-    this.shadow.material.opacity = shadowA;
-    this.shadow.scale.set(1.15 * shadowS, 0.85 * shadowS, 1);
+    const deskK = this.sceneName ? 0.7 : 1;
+    this.shadow.material.opacity = shadowA * (this.sceneName ? 0.6 : 1);
+    this.shadow.scale.set(1.15 * shadowS * deskK, 0.85 * shadowS * deskK, 1);
 
     // ghosts
     const showGhost = wingBlur > 0.2;
@@ -537,7 +833,7 @@ export class FlySprite {
       if (!showGhost) continue;
       const q = new THREE.Quaternion(), wb = g.wb;
       const js = wb.userData.joints;   // yaw, roll, pitch
-      const ph = (g.k - 1) * 0.7;
+      const ph = (g.k - 1) * 0.5;
       wb.quaternion.copy(wb.userData.q0);
       const sgn = 1;
       const vals = [js[0].ref + js[0].v + ph * 0.55 * sgn, js[1].ref + js[1].v + ph * 0.35, js[2].ref + js[2].v];
@@ -547,22 +843,24 @@ export class FlySprite {
       g.o.children[0].material.opacity = 0.07 * wingBlur;
     }
 
-    // overlays
-    const asleep = s === 'sleep';
+    // overlays, anchored to the head
+    const asleep = s === 'sleep' || s === 'sleepDesk';
+    const spark = s === 'proboscis' && st < 1400;
+    if (asleep || spark) { this.mover.updateWorldMatrix(true, true); this.byName.head.getWorldPosition(this.headW || (this.headW = new THREE.Vector3())); }
+    const hw = this.headW || new THREE.Vector3();
     this.zzz.forEach((z, i) => {
       z.visible = asleep && st > 600;
       if (!z.visible) return;
       const ph = ((T / 1.6) + i / 3) % 1;
-      z.position.set(this.mover.position.x + 0.22 + i * 0.05 + Math.sin(ph * TAU) * 0.04, 0.35 + ph * 0.45, 0.25);
+      z.position.set(hw.x + 0.05 + ph * 0.12 * this.dir + Math.sin(ph * TAU) * 0.03, hw.y + 0.12 + ph * 0.4, hw.z + 0.15);
       const sc = 0.12 + ph * 0.1; z.scale.set(sc, sc, 1);
       z.material.opacity = Math.sin(ph * Math.PI);
     });
-    const spark = s === 'proboscis' && st < 1400;
     this.sparks.forEach((sp, i) => {
       sp.visible = spark;
       if (!spark) return;
-      const a = i * TAU / 6 + T * 1.4, r = 0.35 + (st / 1400) * 0.25;
-      sp.position.set(this.mover.position.x + Math.cos(a) * r, 0.35 + Math.sin(a) * r * 0.5, 0.3);
+      const a = i * TAU / 6 + T * 1.4, r = 0.18 + (st / 1400) * 0.2;
+      sp.position.set(hw.x + Math.cos(a) * r, hw.y + 0.05 + Math.sin(a) * r * 0.6, hw.z + 0.2);
       sp.material.opacity = 0.9 * (1 - st / 1400);
     });
   }

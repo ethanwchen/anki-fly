@@ -31,6 +31,7 @@ fly = mw._anki_fly
 print("widget:", fly.web.size(), "visible", fly.web.isVisible())
 
 col = mw.col
+col.set_config("fsrs", True)   # exercise the FSRS path (memory_state / retrievability)
 did = col.decks.id("Test")
 m = col.models.by_name("Basic")
 for i in range(12):
@@ -63,7 +64,8 @@ print("pattern:", {k: (round(v, 3) if isinstance(v, float) else v) for k, v in p
 print("desired retention:", dr)
 assert len(data["cards"]) == 12
 assert pat["reviews_total"] == answered
-assert any(c["model"] in ("fsrs", "sm2", "learning") for c in data["cards"])
+print("sample:", [(c["model"], round(c["r"], 3), round(c["stability"], 2)) for c in data["cards"][:6]])
+assert any(c["model"] == "fsrs" for c in data["cards"]), "expected FSRS memory states"
 # exam dialog constructs without error
 dlg = exam.ExamDialog({"cards": data["cards"], "pattern": pat, "desired_retention": dr, "memory": None, "search": "deck:Test", "total_matching": 12})
 pump(300)

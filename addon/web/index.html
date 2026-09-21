@@ -4,55 +4,78 @@
 <meta charset="utf-8">
 <title>Anki Fly</title>
 <style>
-  :root { color-scheme: dark; }
-  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 10px/1.3 ui-sans-serif, system-ui, -apple-system, sans-serif; color: #cfd3dc; user-select: none; }
-  #panel { position: absolute; inset: 0; display: grid; grid-template-columns: 84px 1fr; grid-template-rows: 1fr auto; gap: 0 6px; padding: 5px 8px 5px 4px; box-sizing: border-box;
-           background: rgba(18, 20, 28, 0.86); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; backdrop-filter: blur(8px); }
-  #fly, #brain { width: 100%; height: 100%; display: block; }
-  #fly { grid-row: 1 / span 2; }
-  #brain { border-radius: 6px; background: rgba(0,0,0,0.25); cursor: crosshair; }
-  #meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  #status { color: #e8ebf2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #count, #hz { color: #8a90a0; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #memory { height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; position: relative; }
-  #membar { height: 100%; width: 50%; transition: width .4s; }
-  #membar.neutral { background: #6b7280; } #membar.good { background: #7ee3a0; } #membar.bad { background: #ff6b6b; }
-  #memlabel { color: #8a90a0; font-size: 9px; }
-  #controls { position: absolute; top: 3px; right: 6px; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
-  #panel:hover #controls { opacity: 1; }
-  #controls button { background: rgba(255,255,255,0.08); border: 0; color: #cfd3dc; border-radius: 4px; width: 18px; height: 16px; font-size: 10px; line-height: 16px; padding: 0; cursor: pointer; }
-  #controls button:hover { background: rgba(255,255,255,0.2); color: #fff; }
-  #bubble { position: absolute; left: 6px; top: 6px; max-width: 150px; background: #f4f1e8; color: #23252b; border-radius: 10px; padding: 4px 7px; font-size: 9.5px; line-height: 1.25;
-            opacity: 0; transform: translateY(4px); transition: opacity .2s, transform .2s; pointer-events: none; z-index: 2; }
-  #bubble::after { content: ""; position: absolute; left: 18px; bottom: -5px; border: 5px solid transparent; border-top-color: #f4f1e8; border-bottom: 0; }
+  :root { color-scheme: dark;
+    --bg: rgba(17, 19, 26, 0.9); --line: rgba(255,255,255,0.09); --ink: #eceef3; --ink2: #a3a9b8; --ink3: #6f7585;
+    --good: #7ee3a0; --bad: #ff7b7b; --warn: #f2c14e; --accent: #46c9b3; }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none;
+    font: 11px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); }
+  #panel { position: absolute; inset: 0; display: grid; grid-template-columns: 150px 1fr; grid-template-rows: 1fr; gap: 0 8px;
+    padding: 8px 10px 10px 6px; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 14px;
+    backdrop-filter: blur(10px); box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
+  #fly { width: 100%; height: 100%; display: block; }
+  #right { display: grid; grid-template-rows: 96px auto auto auto 1fr; gap: 3px; min-width: 0; min-height: 0; }
+  #brain { width: 100%; height: 96px; display: block; border-radius: 8px; background: rgba(0,0,0,0.28); cursor: crosshair; }
+  #legend { display: flex; gap: 8px; font-size: 9px; color: var(--ink3); padding: 0 2px; }
+  #legend span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 3px; vertical-align: 0; background: var(--c); }
+  #status { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+  #memrow { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+  #memory { height: 5px; background: rgba(255,255,255,0.09); border-radius: 3px; overflow: hidden; }
+  #membar { height: 100%; width: 50%; transition: width .4s; border-radius: 3px; }
+  #membar.neutral { background: #6b7280; } #membar.good { background: var(--good); } #membar.bad { background: var(--bad); }
+  #memlabel { color: var(--ink2); font-size: 10px; white-space: nowrap; }
+  #foot { display: flex; align-items: end; justify-content: space-between; gap: 6px; color: var(--ink3); font-size: 9.5px; min-width: 0; padding-bottom: 2px; line-height: 1.2; }
+  #session { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #hz { white-space: nowrap; }
+  /* gear + menu */
+  #gear { position: absolute; top: 6px; right: 8px; width: 22px; height: 22px; border-radius: 6px; border: 0; background: rgba(255,255,255,0.06);
+    color: var(--ink2); cursor: pointer; font-size: 13px; line-height: 22px; padding: 0; opacity: .55; transition: opacity .15s, background .15s; }
+  #panel:hover #gear, #gear:focus-visible { opacity: 1; }
+  #gear:hover { background: rgba(255,255,255,0.16); color: #fff; }
+  #menu { position: absolute; top: 30px; right: 8px; background: #1d2029; border: 1px solid var(--line); border-radius: 10px; padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45); display: none; flex-direction: column; min-width: 190px; z-index: 5; }
+  #menu.open { display: flex; }
+  #menu button { background: none; border: 0; color: var(--ink); text-align: left; padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit;
+    display: flex; justify-content: space-between; gap: 12px; }
+  #menu button:hover { background: rgba(255,255,255,0.08); }
+  #menu button kbd { color: var(--ink3); font: 9px ui-monospace, Menlo, monospace; }
+  #menu button .on { color: var(--accent); }
+  #bubble { position: absolute; left: 8px; top: 8px; max-width: 170px; background: #f6f3ea; color: #23252b; border-radius: 10px; padding: 5px 8px;
+    font-size: 10.5px; line-height: 1.3; opacity: 0; transform: translateY(4px); transition: opacity .2s, transform .2s; pointer-events: none; z-index: 3; }
+  #bubble::after { content: ""; position: absolute; left: 22px; bottom: -6px; border: 6px solid transparent; border-top-color: #f6f3ea; border-bottom: 0; }
   #bubble.show { opacity: 1; transform: none; }
-  #dev { display: none; position: absolute; left: 4px; bottom: 2px; gap: 2px; flex-wrap: wrap; }
+  #focusbadge { position: absolute; left: 10px; bottom: 8px; font-size: 9px; color: var(--ink3); letter-spacing: .06em; text-transform: uppercase; display: none; }
+  #dev { display: none; position: absolute; left: 4px; bottom: 2px; gap: 2px; flex-wrap: wrap; z-index: 6; }
   #dev button { font-size: 9px; padding: 1px 4px; }
-  body[data-state="sleep"] #panel { background: rgba(10, 12, 22, 0.9); }
-  /* minimized: just the fly */
-  body.mini #panel { grid-template-columns: 1fr; padding: 2px; border-radius: 10px; cursor: pointer; }
-  body.mini #brain, body.mini #meta, body.mini #controls, body.mini #bubble { display: none; }
+  /* states */
+  body[data-state="sleep"] #panel, body[data-state="sleepDesk"] #panel { background: rgba(11, 13, 22, 0.92); }
+  body.focus #brain { opacity: .45; } body.focus #bubble { display: none; } body.focus #focusbadge { display: block; }
+  body.focus #panel { background: rgba(14, 15, 20, 0.82); }
+  body.mini #panel { grid-template-columns: 1fr; padding: 2px; border-radius: 12px; cursor: pointer; }
+  body.mini #right, body.mini #gear, body.mini #menu, body.mini #bubble, body.mini #focusbadge { display: none; }
 </style>
 </head>
 <body data-state="idle">
 <div id="panel">
-  <canvas id="fly"></canvas>
-  <canvas id="brain"></canvas>
-  <div id="meta">
+  <canvas id="fly" title="Your study fly"></canvas>
+  <div id="right">
+    <canvas id="brain" title="The fly's brain (MaleCNS v1.0). Hover a dot to see which neuron it is."></canvas>
+    <div id="legend"><span style="--c:#50dcff">ACh</span><span style="--c:#ff6ebe">GABA</span><span style="--c:#ffbe46">Glu</span><span style="--c:#78ff8c">dopamine</span></div>
     <div id="status">waking up…</div>
-    <div id="memory"><div id="membar" class="neutral"></div></div>
-    <div id="memlabel">fly memory</div>
-    <div id="count"></div>
-    <div id="hz"></div>
+    <div id="memrow"><div id="memory"><div id="membar" class="neutral"></div></div><div id="memlabel">fly memory</div></div>
+    <div id="foot"><div id="session"></div><div id="hz"></div></div>
   </div>
-  <div id="controls">
-    <button id="btn-exam" title="Fly Exam: test the fly on your cards (Ctrl+Shift+E)">?</button>
-    <button id="btn-min" title="Minimize">–</button>
-    <button id="btn-close" title="Hide for this session (Ctrl+Shift+F brings it back)">×</button>
+  <button id="gear" title="Fly options" aria-label="Fly options" aria-haspopup="menu">⚙</button>
+  <div id="menu" role="menu">
+    <button id="m-focus" role="menuitem"><span>Deep Focus <span class="on" id="focus-on"></span></span><kbd>⌃⇧D</kbd></button>
+    <button id="m-exam" role="menuitem"><span>Fly Exam…</span><kbd>⌃⇧E</kbd></button>
+    <button id="m-min" role="menuitem"><span>Minimize</span></button>
+    <button id="m-close" role="menuitem"><span>Hide for now</span><kbd>⌃⇧F</kbd></button>
   </div>
+  <div id="focusbadge">deep focus</div>
   <div id="bubble"></div>
 </div>
 <div id="dev"></div>
+<script src="vendor/three.min.js"></script>
 <script type="module" src="fly.js"></script>
 </body>
 </html>

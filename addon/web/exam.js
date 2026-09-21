@@ -27,7 +27,9 @@ class Exam {
     meta.denseGroups = new Set(this.g.KC);
     this.brain = new BrainView($('brain'), meta);
     this.sprite = new spriteMod.FlySprite($('fly'));
-    this.sprite.setState('idle');
+    this.desk = !!this.sprite.setScene;
+    if (this.desk) this.sprite.setScene('exam');
+    this.sprite.setState(this.desk ? 'think' : 'idle');
     window.addEventListener('resize', () => { this.brain.resize(); this.sprite.resize(); });
     $('close').onclick = () => py('exam:close');
     $('again').onclick = () => this.start(this.payload, (this.seed | 0) + 1);
@@ -77,7 +79,7 @@ class Exam {
     $('phase').textContent = `The fly has studied ${known} of your cards before. Sniffing…`;
     const rng = mulberry32(seed);
     const results = [];
-    this.sprite.setState('walk');
+    this.sprite.setState(this.desk ? 'think' : 'walk');
     const t0 = performance.now();
     for (let i = 0; i < cards.length; i++) {
       const c = cards[i];
@@ -104,12 +106,13 @@ class Exam {
         row.innerHTML = `<span>${correct ? '✓' : '✗'}</span><b>${esc(c.front)}</b><span>${pct(p)}</span>`;
         $('ticker').prepend(row);
         while ($('ticker').children.length > 40) $('ticker').lastChild.remove();
-        this.sprite.setState(correct ? 'proboscis' : 'groom');
+        this.sprite.setState(this.desk ? 'write' : (correct ? 'proboscis' : 'groom'));
         await new Promise(r => requestAnimationFrame(r));
       }
     }
     this.running = false;
-    this.sprite.setState('idle');
+    const sc = results.filter(r => r.correct).length / results.length;
+    this.sprite.setState(this.desk ? (sc >= 0.8 ? 'celebrate' : 'think') : 'idle');
     $('phase').textContent = `Done in ${((performance.now() - t0) / 1000).toFixed(1)} s.`;
     this.report(results);
   }
@@ -154,7 +157,11 @@ class Exam {
     const diags = this.diagnose({ meanR, dr, againRate30, pat, studied, res, coverage });
     const weakest = [...studied].sort((a, b) => a.p - b.p).slice(0, 12);
 
+    const verdict = studied.length === 0 ? 'None of these cards have been reviewed yet, so there is nothing to predict.' :
+      `If you sat this exam right now, FSRS expects about <b>${pct(fsrsExpected)}</b>${heuristic ? ' (SM-2 estimate)' : ''}; the fly scored <b>${pct(score)}</b>. ` +
+      (dr ? (meanR >= dr - 0.03 ? 'Retention is on target.' : `Retention is ${pct(dr - meanR)} under your ${pct(dr)} target.`) : '');
     $('report').innerHTML = `
+      <div class="verdict">${verdict}</div>
       <div class="tiles">${tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join('')}</div>
       <h2>Retrievability of studied cards (FSRS)</h2>
       <div class="hist">${bins.map((b, i) => `<div class="bar" data-n="${b}" title="${i * 10}–${i * 10 + 10}%: ${b} cards" style="height:${Math.max(2, b / maxBin * 100)}%"></div>`).join('')}</div>

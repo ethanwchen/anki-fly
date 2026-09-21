@@ -18,6 +18,7 @@ PKG = mw.addonManager.addonFromModule(__name__)
 ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
 USER_FILES = os.path.join(ADDON_DIR, "user_files")
 MEMORY_PATH = os.path.join(USER_FILES, "memory.json")
+STATE_PATH = os.path.join(USER_FILES, "state.json")   # runtime toggles (minimized, focus); config.json keeps the defaults
 MINI_SIZE = 44
 
 mw.addonManager.setWebExports(__name__, r"web/.*")
@@ -29,6 +30,25 @@ def get_config() -> dict:
 
 def write_config(cfg: dict) -> None:
     mw.addonManager.writeConfig(__name__, cfg)
+
+
+def read_state() -> dict:
+    try:
+        with open(STATE_PATH) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def write_state(**kv) -> None:
+    st = read_state()
+    st.update(kv)
+    try:
+        os.makedirs(USER_FILES, exist_ok=True)
+        with open(STATE_PATH, "w") as f:
+            json.dump(st, f)
+    except OSError:
+        pass
 
 
 def read_memory() -> dict | None:
@@ -43,7 +63,9 @@ class FlyWidget(QObject):
     def __init__(self) -> None:
         super().__init__(mw)
         self.cfg = get_config()
-        self.minimized = bool(self.cfg.get("minimized", False))
+        st = read_state()
+        self.minimized = bool(st.get("minimized", False))
+        self.focus = bool(st.get("focus", self.cfg.get("focus_mode", False)))
         self.closed_this_session = False
         host = mw.form.centralwidget
         self.web = AnkiWebView(parent=host, title="anki_fly")
@@ -75,7 +97,7 @@ class FlyWidget(QObject):
         if self.minimized:
             self.web.setFixedSize(MINI_SIZE, MINI_SIZE)
         else:
-            self.web.setFixedSize(int(self.cfg.get("width", 330)), int(self.cfg.get("height", 150)))
+            self.web.setFixedSize(int(self.cfg.get("width", 400)), int(self.cfg.get("height", 150)))
         self.reposition()
         self.update_visibility()
         self.send({"type": "config", "cfg": {
@@ -85,6 +107,7 @@ class FlyWidget(QObject):
             "sleepSeconds": int(self.cfg.get("sleep_seconds", 240)),
             "minimized": self.minimized,
             "bubbles": bool(self.cfg.get("thought_bubbles", True)),
+            "focus": self.focus,
         }})
 
     def eventFilter(self, obj, evt) -> bool:  # noqa: N802
@@ -114,10 +137,18 @@ class FlyWidget(QObject):
 
     def set_minimized(self, value: bool) -> None:
         self.minimized = value
-        cfg = get_config()
-        cfg["minimized"] = value
-        write_config(cfg)
+        write_state(minimized=value)
         self.apply_config()
+
+    def set_focus(self, value: bool) -> None:
+        self.focus = value
+        write_state(focus=value)
+        self.apply_config()
+        from aqt.utils import tooltip
+        tooltip("Deep Focus on — the fly will stay quiet." if value else "Deep Focus off.", period=1500)
+
+    def toggle_focus(self) -> None:
+        self.set_focus(not self.focus)
 
     def toggle_visible(self) -> None:
         """Ctrl+Shift+F / Tools menu: hide for this session, or bring back (and un-minimize)."""
@@ -142,6 +173,12 @@ class FlyWidget(QObject):
             return {"ok": True}
         if cmd == "fly:restore":
             self.set_minimized(False)
+            return {"ok": True}
+        if cmd == "fly:focus:on":
+            self.set_focus(True)
+            return {"ok": True}
+        if cmd == "fly:focus:off":
+            self.set_focus(False)
             return {"ok": True}
         if cmd == "fly:close":
             self.closed_this_session = True
@@ -206,6 +243,10 @@ def setup() -> None:
     toggle.setShortcut(QKeySequence("Ctrl+Shift+F"))
     toggle.triggered.connect(fly.toggle_visible)
     menu.addAction(toggle)
+    focus = QAction("Deep Focus (fly stays quiet)", mw)
+    focus.setShortcut(QKeySequence("Ctrl+Shift+D"))
+    focus.triggered.connect(fly.toggle_focus)
+    menu.addAction(focus)
     test = QAction("Fly Exam: test the fly on your cards…", mw)
     test.setShortcut(QKeySequence("Ctrl+Shift+E"))
     test.triggered.connect(exam.open_exam_dialog)
@@ -213,7 +254,11 @@ def setup() -> None:
     amnesia = QAction("Give the fly amnesia (reset its memory)", mw)
     amnesia.triggered.connect(lambda: _amnesia(fly))
     menu.addAction(amnesia)
-    mw._anki_fly_shortcuts = [QShortcut(QKeySequence("Ctrl+Shift+F"), mw, activated=fly.toggle_visible)]
+    mw._anki_fly_shortcuts = [
+        QShortcut(QKeySequence("Ctrl+Shift+F"), mw, activated=fly.toggle_visible),
+        QShortcut(QKeySequence("Ctrl+Shift+D"), mw, activated=fly.toggle_focus),
+        QShortcut(QKeySequence("Ctrl+Shift+E"), mw, activated=exam.open_exam_dialog),
+    ]
 
 
 def _amnesia(fly: FlyWidget) -> None:

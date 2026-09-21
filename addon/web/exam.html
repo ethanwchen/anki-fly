@@ -14,9 +14,9 @@
   header .spacer { flex: 1; }
   button { background: rgba(255,255,255,0.08); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
   button:hover { background: rgba(255,255,255,0.14); }
-  main { display: grid; grid-template-columns: 300px 1fr; gap: 0; min-height: 0; }
-  #left { border-right: 1px solid var(--line); display: grid; grid-template-rows: 150px 1fr auto; min-height: 0; }
-  #fly { width: 100%; height: 150px; display: block; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 0; min-height: 0; }
+  #left { border-right: 1px solid var(--line); display: grid; grid-template-rows: 200px 1fr auto; min-height: 0; }
+  #fly { width: 100%; height: 200px; display: block; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.15)); }
   #brain { width: 100%; height: 100%; display: block; background: rgba(0,0,0,0.25); min-height: 0; }
   #ticker { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; max-height: 150px; overflow: auto; }
   #ticker div { display: flex; gap: 8px; padding: 2px 0; color: var(--ink2); }
@@ -26,6 +26,7 @@
   #right { overflow: auto; padding: 16px 20px; }
   #progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin: 6px 0 14px; }
   #progress div { height: 100%; width: 0; background: var(--seq4); transition: width .1s; }
+  .verdict { font-size: 15px; line-height: 1.45; margin: 4px 0 16px; color: var(--ink); } .verdict b { color: var(--seq5); }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
   .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
   .tile .k { font-size: 11px; color: var(--ink2); text-transform: uppercase; letter-spacing: .04em; }

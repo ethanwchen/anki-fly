@@ -88,13 +88,17 @@ export class BrainView {
     ctx.clearRect(0, 0, this.w, this.h);
     ctx.drawImage(this.staticLayer, 0, 0);
     const decay = Math.exp(-dtMs / 140);
-    const r = 2.2 * this.dpr;
+    const r = 1.4 * this.dpr;
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < n; i++) {
       const g = glow[i];
       if (g < 0.03) { glow[i] = 0; continue; }
       const col = NT_COLORS[nt[i]] || NT_COLORS.UNK;
-      ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${g.toFixed(3)})`;
+      // soft halo + bright core
+      ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${(g * 0.16).toFixed(3)})`;
+      const halo = r * (1.5 + 2 * g);
+      ctx.fillRect(this.px[i] - halo / 2, this.py[i] - halo / 2, halo, halo);
+      ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${(g * 0.8).toFixed(3)})`;
       const rr = r * (0.6 + g);
       ctx.fillRect(this.px[i] - rr / 2, this.py[i] - rr / 2, rr, rr);
       glow[i] = g * decay;
