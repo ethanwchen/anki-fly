@@ -34,8 +34,8 @@ The fly sits an exam on your deck:
 - **Sync with your history.** Tools → Drosophil-Anki → Sync replays your whole review log into the fly's
   synapses (aggregated per note), so a year of Anki becomes a year of fly memories in seconds.
 - **Name your fly, resize the widget** (drag the top-left grip or − / + size in the gear menu; the
-  ratio is locked so nothing distorts), **costumes** unlocked by studying (sunglasses at 100 cards,
-  party hat at 7 study days, cat ears at 500 cards, top hat at 30 days, crown for a 90% exam).
+  ratio is locked so nothing distorts), a **Wardrobe** of 23 costumes (hats, sunglasses, cat ears, halo, propeller cap…) unlocked
+  by studying: cards reviewed, study days, a 90% exam, or surviving 5 crashouts.
 - **Two real brains.** The default fly runs the male MaleCNS connectome; switch to the female fly and it
   runs the FlyWire FAFB connectome instead (10,322 neurons in the pack, a genuinely different brain, with
   its own memory file).

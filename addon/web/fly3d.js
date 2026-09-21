@@ -4,7 +4,7 @@
 //         study, pressAgain, pressHard, pressGood, pressEasy, celebrate, dance, zoomies, crashout, sulk, sleepDesk, still (scene 'study')
 //         think, write, sleepDesk, still (scene 'exam'); setScene('study'|'exam'|null)
 // Species/variants (materials + vertex colours only): setSpecies('wild'|'white'|'ebony'|'yellow'|'female'), getSpecies()
-// Costumes (procedural props parented to the head): setCostume('none'|'sunglasses'|'tophat'|'catears'|'partyhat'|'crown'), getCostume()
+// Costumes (procedural props parented to the head): setCostume(name), getCostume(); names in FlySprite.costumes (COSTUMES below)
 //
 // Geometry: anatomically detailed Drosophila body from TuragaLab/flybody (Apache-2.0),
 // decimated and baked into vendor/fly.bin (see vendor/LICENSE-flybody.txt). The MuJoCo
@@ -119,6 +119,221 @@ const SPECIES = {
   yellow: { tint: 0xffe6a8, glow: 0x2a1e06, body: 0xc9a15a, lower: 0xd8b878, bristle: 0x6b4a2a, eye: 0xb8321e, eyeRough: 0.3, eyeOpacity: 1, wing: 0xc8d6ee, wingOpacity: 0.24, scale: 1 },
   female: { tint: 0xffffff, glow: 0x000000, body: 0x8c6230, lower: 0xb08a55, bristle: 0x1b1410, eye: 0xb8321e, eyeRough: 0.3, eyeOpacity: 1, wing: 0xbfd2f0, wingOpacity: 0.26, scale: 1.15, femaleAbdomen: true },
 };
+
+// ---------- costumes: procedural makers in costume space (x = right, y = forward, z = up, origin = head centre; W = head width) ----------
+const COSTUME_MAKERS = {
+  sunglasses(G, W, top, H, std) {
+    const lensMat = new THREE.MeshPhysicalMaterial({ color: 0x0a0c12, roughness: 0.12, clearcoat: 1, transparent: true, opacity: 0.88 });
+    const frame = std(0x1a1a1a, { metalness: 0.4, roughness: 0.4 });
+    const E = H.eyes, r = W * 0.27;
+    for (const c of E) {
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), lensMat);
+      lens.position.copy(c); lens.position.y += r * 0.55; lens.scale.set(1, 0.45, 0.9); G.add(lens);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.95, r * 0.08, 6, 24), frame);
+      rim.position.copy(lens.position); rim.rotation.x = Math.PI / 2; G.add(rim);
+    }
+    const bridge = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.08, r * 0.08, Math.abs(E[0].x - E[1].x) * 0.5, 6), frame);
+    bridge.rotation.z = Math.PI / 2; bridge.position.set((E[0].x + E[1].x) / 2, (E[0].y + E[1].y) / 2 + r * 0.9, (E[0].z + E[1].z) / 2 + r * 0.35); G.add(bridge);
+  },
+  monocle(G, W, top, H, std) {
+    const gold = std(0xd4a53a, { metalness: 0.8, roughness: 0.3 }), c = H.eyes[1], r = W * 0.26;
+    const glass = new THREE.Mesh(new THREE.CircleGeometry(r * 0.9, 24), new THREE.MeshPhysicalMaterial({ color: 0xdff4ff, transparent: true, opacity: 0.3, roughness: 0.05, side: THREE.DoubleSide }));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.95, r * 0.07, 6, 24), gold);
+    for (const m of [glass, rim]) { m.position.copy(c); m.position.y += r * 0.75; m.rotation.x = Math.PI / 2; G.add(m); }
+    const chain = new THREE.Mesh(new THREE.TorusGeometry(r * 0.9, r * 0.03, 4, 20, Math.PI), gold);
+    chain.position.set(c.x + r * 0.3, c.y + r * 0.5, c.z - r * 0.9); chain.rotation.y = Math.PI / 2; G.add(chain);
+  },
+  tophat(G, W, top, H, std) {
+    const mat = std(0x15121a, { roughness: 0.5 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.62, W * 0.62, W * 0.05, 28), mat);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.36, W * 0.4, W * 0.6, 28), mat);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.405, W * 0.405, W * 0.1, 28), std(0x8b1d24));
+    crown.position.z = W * 0.3; band.position.z = W * 0.08;
+    const hat = new THREE.Group(); hat.add(brim, crown, band); hat.children.forEach(m => { m.rotation.x = Math.PI / 2; });
+    hat.position.copy(top); hat.position.z += W * 0.02; hat.rotation.x = 0.15; hat.rotation.y = -0.12; G.add(hat);
+  },
+  catears(G, W, top, H, std) {
+    const fur = std(0x2b2420, { roughness: 0.9 }), inner = std(0xe98ea6, { roughness: 0.9 });
+    for (const sgn of [-1, 1]) {
+      const ear = new THREE.Group();
+      const outer = new THREE.Mesh(new THREE.ConeGeometry(W * 0.16, W * 0.42, 4), fur);
+      const pink = new THREE.Mesh(new THREE.ConeGeometry(W * 0.09, W * 0.26, 4), inner); pink.position.set(0, -W * 0.02, W * 0.02);
+      outer.rotation.y = Math.PI / 4; pink.rotation.y = Math.PI / 4;
+      ear.add(outer, pink); ear.rotation.x = Math.PI / 2; ear.rotation.z = -sgn * 0.35;
+      ear.position.set(top.x + sgn * W * 0.3, top.y - W * 0.05, top.z + W * 0.12); G.add(ear);
+    }
+  },
+  bunnyears(G, W, top, H, std) {
+    const fur = std(0xf2ede6, { roughness: 0.95 }), inner = std(0xf4a6b8, { roughness: 0.95 });
+    for (const sgn of [-1, 1]) {
+      const ear = new THREE.Group();
+      const outer = new THREE.Mesh(new THREE.CapsuleGeometry(W * 0.1, W * 0.7, 4, 10), fur);
+      const pink = new THREE.Mesh(new THREE.CapsuleGeometry(W * 0.05, W * 0.5, 4, 10), inner); pink.position.y = W * 0.05; pink.position.z = W * 0.06;
+      ear.add(outer, pink); ear.rotation.x = Math.PI / 2; ear.rotation.z = -sgn * 0.25; ear.rotation.y = sgn * 0.15;
+      ear.position.set(top.x + sgn * W * 0.22, top.y - W * 0.1, top.z + W * 0.4); G.add(ear);
+    }
+  },
+  partyhat(G, W, top, H, std) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.3, W * 0.85, 24, 1), std(0x3b7ddd, { roughness: 0.5 }));
+    cone.rotation.x = Math.PI / 2; cone.position.z = W * 0.42;
+    const stripe = new THREE.Mesh(new THREE.ConeGeometry(W * 0.19, W * 0.54, 24, 1, true), std(0xf2c94c, { roughness: 0.5 }));
+    stripe.rotation.x = Math.PI / 2; stripe.position.z = W * 0.42 + W * 0.155; stripe.scale.setScalar(1.01);
+    const pom = new THREE.Mesh(new THREE.SphereGeometry(W * 0.09, 12, 10), std(0xf25f5c, { roughness: 0.9 })); pom.position.z = W * 0.86;
+    const hat = new THREE.Group(); hat.add(cone, stripe, pom); hat.position.copy(top); hat.rotation.x = 0.25; hat.rotation.y = 0.2; G.add(hat);
+  },
+  crown(G, W, top, H, std) {
+    const gold = std(0xd4a53a, { metalness: 0.85, roughness: 0.3, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.38, W * 0.4, W * 0.16, 24, 1, true), gold);
+    ring.rotation.x = Math.PI / 2; ring.position.z = W * 0.08;
+    const hat = new THREE.Group(); hat.add(ring);
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * TAU, pk = new THREE.Mesh(new THREE.ConeGeometry(W * 0.07, W * 0.2, 4), gold);
+      pk.rotation.x = Math.PI / 2; pk.position.set(Math.cos(a) * W * 0.38, Math.sin(a) * W * 0.38, W * 0.24); hat.add(pk);
+      const gem = new THREE.Mesh(new THREE.SphereGeometry(W * 0.035, 8, 6), std([0xd6336c, 0x2f9e44, 0x1c7ed6][i % 3], { roughness: 0.2 }));
+      gem.position.set(Math.cos(a + 0.5) * W * 0.4, Math.sin(a + 0.5) * W * 0.4, W * 0.08); hat.add(gem);
+    }
+    hat.position.copy(top); hat.position.z -= W * 0.02; hat.rotation.x = 0.1; G.add(hat);
+  },
+  wizard(G, W, top, H, std) {
+    const purple = std(0x4c2a85, { roughness: 0.6 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.7, W * 0.7, W * 0.04, 28), purple); brim.rotation.x = Math.PI / 2;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.36, W * 1.1, 24), purple); cone.rotation.x = Math.PI / 2; cone.position.z = W * 0.55;
+    const hat = new THREE.Group(); hat.add(brim, cone);
+    for (let i = 0; i < 5; i++) {
+      const star = new THREE.Mesh(new THREE.OctahedronGeometry(W * 0.05), std(0xffd84a, { emissive: 0x6a5010 }));
+      const a = i * 1.9, h = W * (0.2 + i * 0.16); star.position.set(Math.cos(a) * W * 0.36 * (1 - h / (W * 1.1)), Math.sin(a) * W * 0.36 * (1 - h / (W * 1.1)), h); hat.add(star);
+    }
+    hat.position.copy(top); hat.rotation.x = 0.35; hat.rotation.y = 0.1; hat.children[1].rotation.z = 0.15; G.add(hat);
+  },
+  santa(G, W, top, H, std) {
+    const red = std(0xc8202a, { roughness: 0.8 }), white = std(0xf7f3ee, { roughness: 1 });
+    const brim = new THREE.Mesh(new THREE.TorusGeometry(W * 0.42, W * 0.1, 8, 28), white); brim.position.z = W * 0.02;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.42, W * 0.95, 24), red); cone.rotation.x = Math.PI / 2; cone.position.z = W * 0.45;
+    const pom = new THREE.Mesh(new THREE.SphereGeometry(W * 0.12, 12, 10), white); pom.position.set(W * 0.1, -W * 0.35, W * 0.78);
+    const hat = new THREE.Group(); hat.add(brim, cone, pom); cone.rotation.z = -0.25; cone.rotation.x = Math.PI / 2 + 0.35;
+    hat.position.copy(top); hat.rotation.x = 0.2; G.add(hat);
+  },
+  pirate(G, W, top, H, std) {
+    const black = std(0x1a1712, { roughness: 0.7 });
+    const hat = new THREE.Group();
+    const base = new THREE.Mesh(new THREE.SphereGeometry(W * 0.44, 20, 12, 0, TAU, 0, Math.PI / 2), black); base.rotation.x = Math.PI / 2; hat.add(base);
+    for (const [ang, w] of [[0, 1.4], [2.1, 1.2], [-2.1, 1.2]]) {
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(W * w, W * 0.04, W * 0.45), black);
+      flap.position.set(Math.sin(ang) * W * 0.3, Math.cos(ang) * W * 0.3, W * 0.2); flap.rotation.z = -ang; flap.rotation.x = 0.3; hat.add(flap);
+    }
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(W * 0.08, 10, 8), std(0xf4f1ea)); skull.position.set(0, W * 0.42, W * 0.25); hat.add(skull);
+    hat.position.copy(top); hat.rotation.x = 0.15; G.add(hat);
+    const c = H.eyes[0], r = W * 0.26;
+    const patch = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 10), black); patch.position.copy(c); patch.position.y += r * 0.5; patch.scale.set(1, 0.4, 0.85); G.add(patch);
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(W * 0.5, W * 0.02, 4, 32), black); strap.position.set(0, 0, c.z + r * 0.2); strap.rotation.x = 0.4; G.add(strap);
+  },
+  halo(G, W, top, H, std) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(W * 0.4, W * 0.045, 8, 32), std(0xffe27a, { emissive: 0xffc23a, emissiveIntensity: 0.9, metalness: 0.5, roughness: 0.3 }));
+    ring.position.copy(top); ring.position.z += W * 0.35; ring.rotation.x = 0.15; G.add(ring);
+  },
+  devil(G, W, top, H, std) {
+    const red = std(0xb3121a, { roughness: 0.4 });
+    for (const sgn of [-1, 1]) {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(W * 0.1, W * 0.4, 10), red);
+      horn.rotation.x = Math.PI / 2; horn.rotation.z = -sgn * 0.5;
+      horn.position.set(top.x + sgn * W * 0.32, top.y - W * 0.05, top.z + W * 0.12); G.add(horn);
+    }
+  },
+  viking(G, W, top, H, std) {
+    const steel = std(0x8d939c, { metalness: 0.85, roughness: 0.35 }), horn = std(0xe9dcc2, { roughness: 0.7 });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(W * 0.5, 22, 14, 0, TAU, 0, Math.PI / 2), steel); dome.rotation.x = Math.PI / 2; dome.scale.set(1, 1, 0.7);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(W * 0.5, W * 0.04, 6, 28), std(0x5a4a2c, { metalness: 0.4 })); rim.position.z = W * 0.02;
+    const hat = new THREE.Group(); hat.add(dome, rim);
+    for (const sgn of [-1, 1]) {
+      const h = new THREE.Mesh(new THREE.ConeGeometry(W * 0.09, W * 0.5, 10), horn);
+      h.rotation.x = Math.PI / 2; h.rotation.z = -sgn * 0.9; h.position.set(sgn * W * 0.55, 0, W * 0.35); hat.add(h);
+    }
+    hat.position.copy(top); hat.position.z -= W * 0.05; hat.rotation.x = 0.15; G.add(hat);
+  },
+  chef(G, W, top, H, std) {
+    const white = std(0xfbfaf6, { roughness: 1 });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.4, W * 0.42, W * 0.25, 24), white); band.rotation.x = Math.PI / 2; band.position.z = W * 0.12;
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(W * 0.5, 20, 14), white); puff.position.z = W * 0.55; puff.scale.set(1, 1, 0.8);
+    const hat = new THREE.Group(); hat.add(band, puff);
+    for (let i = 0; i < 6; i++) { const a = i / 6 * TAU, b = new THREE.Mesh(new THREE.SphereGeometry(W * 0.2, 12, 8), white); b.position.set(Math.cos(a) * W * 0.4, Math.sin(a) * W * 0.4, W * 0.5); hat.add(b); }
+    hat.position.copy(top); hat.rotation.x = 0.1; G.add(hat);
+  },
+  graduate(G, W, top, H, std) {
+    const black = std(0x15141a, { roughness: 0.6 });
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.4, W * 0.44, W * 0.18, 24), black); cap.rotation.x = Math.PI / 2; cap.position.z = W * 0.09;
+    const board = new THREE.Mesh(new THREE.BoxGeometry(W * 1.1, W * 1.1, W * 0.04), black); board.position.z = W * 0.2; board.rotation.z = 0.5;
+    const btn = new THREE.Mesh(new THREE.SphereGeometry(W * 0.04, 8, 6), std(0xd4a53a, { metalness: 0.7 })); btn.position.z = W * 0.24;
+    const tassel = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.015, W * 0.03, W * 0.5, 6), std(0xd4a53a)); tassel.position.set(W * 0.5, W * 0.2, W * 0.02); tassel.rotation.x = 0.25;
+    const hat = new THREE.Group(); hat.add(cap, board, btn, tassel); hat.position.copy(top); hat.rotation.x = 0.1; hat.rotation.y = -0.08; G.add(hat);
+  },
+  headphones(G, W, top, H, std) {
+    const dark = std(0x23262e, { roughness: 0.5 }), pad = std(0xd6336c, { roughness: 0.6 });
+    const band = new THREE.Mesh(new THREE.TorusGeometry(W * 0.55, W * 0.045, 8, 32, Math.PI), dark); band.position.copy(top); band.position.z -= W * 0.1; band.rotation.y = 0; G.add(band);
+    for (const sgn of [-1, 1]) {
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.2, W * 0.2, W * 0.14, 20), dark); cup.rotation.z = Math.PI / 2;
+      cup.position.set(sgn * W * 0.58, -W * 0.02, top.z - W * 0.35); G.add(cup);
+      const p = new THREE.Mesh(new THREE.TorusGeometry(W * 0.14, W * 0.05, 8, 20), pad); p.rotation.y = Math.PI / 2; p.position.copy(cup.position); p.position.x -= sgn * W * 0.08; G.add(p);
+    }
+  },
+  bow(G, W, top, H, std) {
+    const pink = std(0xf06292, { roughness: 0.6 });
+    const bow = new THREE.Group();
+    for (const sgn of [-1, 1]) { const loop = new THREE.Mesh(new THREE.SphereGeometry(W * 0.2, 14, 10), pink); loop.scale.set(1.3, 0.7, 0.8); loop.position.x = sgn * W * 0.24; bow.add(loop); }
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(W * 0.1, 10, 8), std(0xd81b60)); bow.add(knot);
+    bow.position.copy(top); bow.position.x += W * 0.15; bow.position.z += W * 0.1; bow.rotation.y = 0.4; bow.rotation.x = 0.3; G.add(bow);
+  },
+  flowers(G, W, top, H, std) {
+    const cols = [0xff6b9d, 0xffd166, 0x9ad0ff, 0xffffff, 0xb388ff], leaf = std(0x3c9a4a, { roughness: 0.8 });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(W * 0.42, W * 0.035, 6, 28), leaf); ring.position.copy(top); ring.position.z -= W * 0.05; ring.rotation.x = 0.15; G.add(ring);
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * TAU, f = new THREE.Group();
+      for (let k = 0; k < 5; k++) { const petal = new THREE.Mesh(new THREE.SphereGeometry(W * 0.045, 8, 6), std(cols[i % cols.length], { roughness: 0.8 })); petal.position.set(Math.cos(k / 5 * TAU) * W * 0.06, Math.sin(k / 5 * TAU) * W * 0.06, 0); f.add(petal); }
+      const core = new THREE.Mesh(new THREE.SphereGeometry(W * 0.035, 8, 6), std(0xffc107)); core.position.z = W * 0.02; f.add(core);
+      f.position.set(top.x + Math.cos(a) * W * 0.42, top.y + Math.sin(a) * W * 0.42 * Math.cos(0.15), top.z - W * 0.05 + Math.sin(a) * W * 0.06); G.add(f);
+    }
+  },
+  cowboy(G, W, top, H, std) {
+    const tan = std(0x8a5a2b, { roughness: 0.85 });
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.8, W * 0.8, W * 0.04, 28), tan); brim.rotation.x = Math.PI / 2; brim.scale.set(1, 1.15, 1);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(W * 0.4, 20, 12, 0, TAU, 0, Math.PI / 2), tan); dome.rotation.x = Math.PI / 2; dome.scale.set(1, 1.1, 0.85); dome.position.z = W * 0.02;
+    const band = new THREE.Mesh(new THREE.TorusGeometry(W * 0.4, W * 0.03, 6, 28), std(0x3b2314)); band.position.z = W * 0.06; band.scale.set(1, 1.1, 1);
+    const hat = new THREE.Group(); hat.add(brim, dome, band);
+    brim.geometry.attributes.position.array.forEach((v, i, arr) => { if (i % 3 === 0 && Math.abs(v) > W * 0.55) arr[i + 1] += (Math.abs(v) - W * 0.55) * 0.6; });
+    brim.geometry.attributes.position.needsUpdate = true; brim.geometry.computeVertexNormals();
+    hat.position.copy(top); hat.rotation.x = 0.1; G.add(hat);
+  },
+  beret(G, W, top, H, std) {
+    const red = std(0xb71c1c, { roughness: 0.9 });
+    const disc = new THREE.Mesh(new THREE.SphereGeometry(W * 0.55, 20, 12), red); disc.scale.set(1, 1, 0.3);
+    const nub = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.02, W * 0.02, W * 0.1, 6), red); nub.rotation.x = Math.PI / 2; nub.position.z = W * 0.18;
+    const hat = new THREE.Group(); hat.add(disc, nub); hat.position.copy(top); hat.position.x += W * 0.12; hat.rotation.y = 0.35; hat.rotation.x = 0.1; G.add(hat);
+  },
+  alien(G, W, top, H, std) {
+    const green = std(0x7cff5a, { emissive: 0x2a8a20, emissiveIntensity: 0.6, roughness: 0.4 });
+    for (const sgn of [-1, 1]) {
+      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.02, W * 0.025, W * 0.6, 6), std(0x333)); stalk.rotation.x = Math.PI / 2; stalk.rotation.z = -sgn * 0.35;
+      stalk.position.set(top.x + sgn * W * 0.25, top.y - W * 0.05, top.z + W * 0.28);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(W * 0.1, 12, 10), green); ball.position.set(top.x + sgn * W * 0.45, top.y - W * 0.05, top.z + W * 0.56);
+      G.add(stalk, ball);
+    }
+  },
+  scarf(G, W, top, H, std) {
+    const wool = std(0xe0523f, { roughness: 1 }), stripe = std(0xf6e7c1, { roughness: 1 });
+    const neck = new THREE.Vector3(0, -W * 0.35, -W * 0.15);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(W * 0.36, W * 0.1, 10, 28), wool); ring.position.copy(neck); ring.rotation.x = 0.25; G.add(ring);
+    const ring2 = new THREE.Mesh(new THREE.TorusGeometry(W * 0.36, W * 0.05, 8, 28), stripe); ring2.position.copy(neck); ring2.position.z += W * 0.08; ring2.rotation.x = 0.25; G.add(ring2);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(W * 0.18, W * 0.06, W * 0.5), wool); tail.position.set(W * 0.35, -W * 0.2, -W * 0.45); tail.rotation.y = 0.3; G.add(tail);
+  },
+  propeller(G, W, top, H, std, self) {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(W * 0.48, 20, 12, 0, TAU, 0, Math.PI / 2), std(0xf2c94c, { roughness: 0.6 })); cap.rotation.x = Math.PI / 2; cap.scale.set(1, 1, 0.75);
+    for (let i = 0; i < 4; i++) { const seg = new THREE.Mesh(new THREE.SphereGeometry(W * 0.485, 20, 12, i * Math.PI / 2, Math.PI / 4, 0, Math.PI / 2), std([0xe5484d, 0x4f8ff0][i % 2])); seg.rotation.x = Math.PI / 2; seg.scale.set(1, 1, 0.75); G.add(seg); seg.position.copy(top); }
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.02, W * 0.02, W * 0.18, 6), std(0x444)); stem.rotation.x = Math.PI / 2; stem.position.z = W * 0.42;
+    const prop = new THREE.Mesh(new THREE.BoxGeometry(W * 0.7, W * 0.1, W * 0.02), std(0xe5484d)); prop.position.z = W * 0.52;
+    const hat = new THREE.Group(); hat.add(cap, stem, prop); hat.position.copy(top); G.add(hat);
+    self.spinner = prop;   // spun in update()
+  },
+};
+const COSTUMES = ['none', ...Object.keys(COSTUME_MAKERS)];
 
 // ---------- binary loader ----------
 async function loadFlyBin(url) {
@@ -287,65 +502,19 @@ export class FlySprite {
     name = name || 'none';
     this.costume = name;
     if (!this.ready) return;
+    this.spinner = null;
     if (this.costumeGroup) { this.costumeGroup.parent.remove(this.costumeGroup); this.costumeGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); this.costumeGroup = null; }
     if (name === 'none') { this.needsRender = true; return; }
     const G = this.costumeGroup = new THREE.Group(); this.byName.head.add(G);
     const H = this.head; G.position.copy(H.c); G.quaternion.copy(H.quat);   // costume space: x = right, y = forward, z = up, origin = head centre
     const W = H.halfW * 2, top = new THREE.Vector3(0, -W * 0.05, H.upMax * 0.92);
     const std = (c, extra = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.6 }, extra));
-    if (name === 'sunglasses') {
-      const lensMat = new THREE.MeshPhysicalMaterial({ color: 0x0a0c12, roughness: 0.12, clearcoat: 1, transparent: true, opacity: 0.88 });
-      const frame = std(0x1a1a1a, { metalness: 0.4, roughness: 0.4 });
-      const E = H.eyes, r = W * 0.27;
-      for (const c of E) {
-        const lens = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), lensMat);
-        lens.position.copy(c); lens.position.y += r * 0.55; lens.scale.set(1, 0.45, 0.9); G.add(lens);
-        const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.95, r * 0.08, 6, 24), frame);
-        rim.position.copy(lens.position); rim.rotation.x = Math.PI / 2; G.add(rim);
-      }
-      const bridge = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.08, r * 0.08, Math.abs(E[0].x - E[1].x) * 0.5, 6), frame);
-      bridge.rotation.z = Math.PI / 2; bridge.position.set((E[0].x + E[1].x) / 2, (E[0].y + E[1].y) / 2 + r * 0.9, (E[0].z + E[1].z) / 2 + r * 0.35); G.add(bridge);
-    } else if (name === 'tophat') {
-      const mat = std(0x15121a, { roughness: 0.5 });
-      const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.62, W * 0.62, W * 0.05, 28), mat);
-      const crown = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.36, W * 0.4, W * 0.6, 28), mat);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.405, W * 0.405, W * 0.1, 28), std(0x8b1d24));
-      brim.position.z = 0; crown.position.z = W * 0.3; band.position.z = W * 0.08;
-      const hat = new THREE.Group(); hat.add(brim, crown, band); hat.children.forEach(m => { m.rotation.x = Math.PI / 2; });
-      hat.position.copy(top); hat.position.z += W * 0.02; hat.rotation.x = 0.15; hat.rotation.y = -0.12; G.add(hat);
-    } else if (name === 'catears') {
-      const fur = std(0x2b2420, { roughness: 0.9 }), inner = std(0xe98ea6, { roughness: 0.9 });
-      for (const sgn of [-1, 1]) {
-        const ear = new THREE.Group();
-        const outer = new THREE.Mesh(new THREE.ConeGeometry(W * 0.16, W * 0.42, 4), fur);
-        const pink = new THREE.Mesh(new THREE.ConeGeometry(W * 0.09, W * 0.26, 4), inner); pink.position.set(0, -W * 0.02, W * 0.02);
-        outer.rotation.y = Math.PI / 4; pink.rotation.y = Math.PI / 4;
-        ear.add(outer, pink); ear.rotation.x = Math.PI / 2; ear.rotation.z = -sgn * 0.35;   // cone +y -> head +z, tilted outward
-        ear.position.set(top.x + sgn * W * 0.3, top.y - W * 0.05, top.z + W * 0.12); G.add(ear);
-      }
-    } else if (name === 'partyhat') {
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.3, W * 0.85, 24, 1), std(0x3b7ddd, { roughness: 0.5 }));
-      cone.rotation.x = Math.PI / 2; cone.position.z = W * 0.42;
-      const stripe = new THREE.Mesh(new THREE.ConeGeometry(W * 0.19, W * 0.54, 24, 1, true), std(0xf2c94c, { roughness: 0.5 }));
-      stripe.rotation.x = Math.PI / 2; stripe.position.z = W * 0.42 + W * 0.155; stripe.scale.setScalar(1.01);
-      const pom = new THREE.Mesh(new THREE.SphereGeometry(W * 0.09, 12, 10), std(0xf25f5c, { roughness: 0.9 })); pom.position.z = W * 0.86;
-      const hat = new THREE.Group(); hat.add(cone, stripe, pom); hat.position.copy(top); hat.rotation.x = 0.25; hat.rotation.y = 0.2; G.add(hat);
-    } else if (name === 'crown') {
-      const gold = std(0xd4a53a, { metalness: 0.85, roughness: 0.3 });
-      const ring = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.38, W * 0.4, W * 0.16, 24, 1, true), gold);
-      ring.material = gold.clone(); ring.material.side = THREE.DoubleSide; ring.rotation.x = Math.PI / 2; ring.position.z = W * 0.08;
-      const hat = new THREE.Group(); hat.add(ring);
-      for (let i = 0; i < 6; i++) {
-        const a = i / 6 * TAU, pk = new THREE.Mesh(new THREE.ConeGeometry(W * 0.07, W * 0.2, 4), gold);
-        pk.rotation.x = Math.PI / 2; pk.position.set(Math.cos(a) * W * 0.38, Math.sin(a) * W * 0.38, W * 0.24); hat.add(pk);
-        const gem = new THREE.Mesh(new THREE.SphereGeometry(W * 0.035, 8, 6), std([0xd6336c, 0x2f9e44, 0x1c7ed6][i % 3], { roughness: 0.2 }));
-        gem.position.set(Math.cos(a + 0.5) * W * 0.4, Math.sin(a + 0.5) * W * 0.4, W * 0.08); hat.add(gem);
-      }
-      hat.position.copy(top); hat.position.z -= W * 0.02; hat.rotation.x = 0.1; G.add(hat);
-    }
+    const mk = COSTUME_MAKERS[name];
+    if (mk) mk(G, W, top, H, std, this);
     this.needsRender = true;
   }
   getCostume() { return this.costume || 'none'; }
+  static get costumes() { return COSTUMES.slice(); }
 
   // stage frame: x = fly forward, z = fly right, y up; desk top is y = 0
   buildStudy() {
@@ -704,6 +873,7 @@ export class FlySprite {
     }
     if (!this.ready) return;
     this.ensureReach();
+    if (this.spinner) this.spinner.rotation.z += dt * 0.02;
     this.pose(dt);
     if (this.dbg) for (const k in this.dbg) this.addJ(k, this.dbg[k]);   // dev hook: extra joint offsets
     this.applyJoints();

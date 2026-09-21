@@ -2,6 +2,7 @@
 import { Sim, parseGraph } from './sim.js';
 import { BrainView } from './brain_view.js';
 import { FlySprite as FlySprite2D } from './fly_sprite.js';
+import { UNLOCKS, unlocked } from './unlocks.js';
 
 const $ = (id) => document.getElementById(id);
 // Anki shows a scary error dialog for any uncaught error in an add-on page; keep ours in the console.
@@ -44,16 +45,6 @@ const GROUP_WORDS = { KC: 'memory cell (Kenyon cell)', MBON: 'memory output neur
   LC4: 'looming detector', GF: 'giant fiber, escape', GRN_sugar: 'sugar taste neuron', GRN_interneurons: 'taste relay', MN_proboscis: 'proboscis muscle neuron',
   DNp09: 'walk command', DNg11: 'grooming command', MDN: 'back-up command', DNa01: 'turn command', DNa02: 'turn command', background: 'other brain neuron' };
 
-// Costume unlocks. Stats live in the fly's memory file: cards answered, distinct study days, best exam.
-const COSTUMES = [
-  { id: 'none', label: 'No costume', need: () => true, req: '' },
-  { id: 'sunglasses', label: 'Sunglasses', need: (st) => st.cards >= 100, req: '100 cards' },
-  { id: 'partyhat', label: 'Party hat', need: (st) => st.days >= 7, req: '7 study days' },
-  { id: 'catears', label: 'Cat ears', need: (st) => st.cards >= 500, req: '500 cards' },
-  { id: 'tophat', label: 'Top hat', need: (st) => st.days >= 30, req: '30 study days' },
-  { id: 'crown', label: 'Crown', need: (st) => st.bestExam >= 0.9 || st.cards >= 2000, req: 'an exam at 90% or 2,000 cards' },
-];
-
 const FACTS = [
   'I have 9,000 real neurons in here.',
   'Each card is a different smell to me.',
@@ -78,7 +69,7 @@ class AnkiFly {
     this.state = 'idle';
     this.forcedState = null; // {state, until}
     this.stats = { spikes: 0, reviews: 0 };
-    this.progress = { cards: 0, days: [], bestExam: 0, costume: 'none' };   // unlock progress, persisted
+    this.progress = { cards: 0, days: [], bestExam: 0, crashouts: 0, costume: 'none' };   // unlock progress, persisted
     this.memory = {};   // nid -> {approach, avoid, seen}
     this.dirty = false;
     this.session = { cards: 0, again: 0, synapses: 0, start: performance.now() };
@@ -112,7 +103,6 @@ class AnkiFly {
     this.updateSession();
     window.addEventListener('resize', () => { try { this.brain.resize(); this.sprite.resize(); } catch (e) { console.warn(e); } });
     this.wireControls();
-    this.renderCostumeMenu();
     this.lastFrame = performance.now();
     requestAnimationFrame((t) => this.frame(t));
     // background tonic drive so the brain is never fully silent (spontaneous activity)
@@ -140,9 +130,7 @@ class AnkiFly {
     $('leech').onclick = (e) => { e.stopPropagation(); py('fly:leeches:' + this.leeches().join(',')); };
     item('m-rename', () => py('fly:rename'));
     item('m-sex', () => py('fly:sex:toggle'));
-    $('m-costume').onclick = (e) => { e.stopPropagation(); $('costumes').classList.toggle('open'); };
-    $('m-smaller').onclick = (e) => { e.stopPropagation(); const w = Math.max(200, window.innerWidth - 40); py('fly:resize:' + w); py('fly:resized:' + w); };
-    $('m-bigger').onclick = (e) => { e.stopPropagation(); const w = Math.min(900, window.innerWidth + 40); py('fly:resize:' + w); py('fly:resized:' + w); };
+    item('m-wardrobe', () => py('fly:wardrobe:' + JSON.stringify({ costume: this.progress.costume, stats: this.progressStats() })));
     // resize grip: the widget grows toward the top-left; Python keeps the 2:1 ratio and repositions
     const grip = $('grip');
     grip.addEventListener('pointerdown', (e) => {
@@ -286,7 +274,7 @@ class AnkiFly {
           this.brain.pulse(g.PPL1, RED);
           const had = this.streak; this.streak = 0;
           this.setStatus(`that stung · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PPL1 punishment dopamine depressed KC→MBON approach synapses');
-          if (this.againRun >= 7 && (this.againRun - 7) % 5 === 0) { setTimeout(() => this.force('crashout', 3000), 800); this.sulkUntil = performance.now() + 60000; this.maybeSay('crashout', {}, { every: 1, force: true, ms: 3500 }); }
+          if (this.againRun >= 7 && (this.againRun - 7) % 5 === 0) { this.progress.crashouts = (this.progress.crashouts || 0) + 1; setTimeout(() => this.force('crashout', 3000), 800); this.sulkUntil = performance.now() + 60000; this.maybeSay('crashout', {}, { every: 1, force: true, ms: 3500 }); }
           else if (this.againRun === 4) { this.sulkUntil = performance.now() + 30000; this.maybeSay('sulk', {}, { every: 1, force: true }); }
           else if (had >= 3) this.maybeSay('streakBroken', {}, { every: 1, force: true }); else this.maybeSay('again', {}, { every: 2 });
         } else {
@@ -325,6 +313,9 @@ class AnkiFly {
       }
       case 'loadMemory':
         this.loadMemory(ev.data);
+        break;
+      case 'costume':
+        this.setCostume(ev.name);
         break;
       case 'examScore':
         if (ev.score > (this.progress.bestExam || 0)) { this.progress.bestExam = ev.score; this.dirty = true; this.bump(); this.progress.cards--; }
@@ -468,7 +459,7 @@ class AnkiFly {
   }
 
   // ---------- progress & costumes ----------
-  progressStats() { return { cards: this.progress.cards, days: this.progress.days.length, bestExam: this.progress.bestExam }; }
+  progressStats() { return { cards: this.progress.cards, days: this.progress.days.length, bestExam: this.progress.bestExam, crashouts: this.progress.crashouts || 0 }; }
 
   bump() {
     const p = this.progress;
@@ -476,26 +467,15 @@ class AnkiFly {
     const today = new Date().toISOString().slice(0, 10);
     if (!p.days.includes(today)) { p.days.push(today); if (p.days.length > 4000) p.days.shift(); }
     this.dirty = true;
-    const before = this.unlocked; this.unlocked = COSTUMES.filter(c => c.need(this.progressStats())).map(c => c.id);
-    const fresh = before ? this.unlocked.filter(id => !before.includes(id) && id !== 'none') : [];
-    if (fresh.length) { const c = COSTUMES.find(x => x.id === fresh[0]); this.say(`unlocked: ${c.label}! (gear menu)`, 7000); this.force('celebrate', 900); }
-    this.renderCostumeMenu();
+    const before = this.unlocked; this.unlocked = UNLOCKS.filter(c => unlocked(c.id, this.progressStats())).map(c => c.id);
+    const fresh = before ? this.unlocked.filter(id => !before.includes(id)) : [];
+    if (fresh.length) { this.say(`new costume unlocked: ${fresh[0]}! (gear → Wardrobe)`, 7000); this.force('celebrate', 900); }
   }
 
   setCostume(id) {
-    const c = COSTUMES.find(x => x.id === id);
-    if (!c || !c.need(this.progressStats())) return;
+    if (!unlocked(id, this.progressStats())) id = 'none';
     this.progress.costume = id; this.dirty = true;
     if (this.sprite.setCostume) this.sprite.setCostume(id);
-    this.renderCostumeMenu();
-  }
-
-  renderCostumeMenu() {
-    const box = $('costumes'); if (!box) return;
-    const st = this.progressStats();
-    box.innerHTML = COSTUMES.map(c => { const ok = c.need(st); const on = this.progress.costume === c.id;
-      return `<button data-c="${c.id}" ${ok ? '' : 'disabled'} title="${ok ? '' : 'unlock: ' + c.req}"><span>${on ? '● ' : ''}${c.label}</span><kbd>${ok ? '' : c.req}</kbd></button>`; }).join('');
-    box.querySelectorAll('button[data-c]').forEach(b => b.onclick = (e) => { e.stopPropagation(); this.setCostume(b.dataset.c); });
   }
 
   // ---------- session pacing (fatigue signal) ----------
@@ -587,9 +567,8 @@ class AnkiFly {
     this.stats = data.stats || this.stats;
     this.streak = data.streak || 0;
     if (data.progress) this.progress = { ...this.progress, ...data.progress, days: data.progress.days || [] };
-    this.unlocked = COSTUMES.filter(c => c.need(this.progressStats())).map(c => c.id);
-    if (this.sprite.setCostume) this.sprite.setCostume(this.progress.costume || 'none');
-    this.renderCostumeMenu();
+    this.unlocked = UNLOCKS.filter(c => unlocked(c.id, this.progressStats())).map(c => c.id);
+    this.setCostume(this.progress.costume || 'none');
     this.setStatus(`${this.name || 'the fly'} remembers ${Object.keys(this.memory).length} of your cards`);
     this.updateSession();
     this.leechCheck();

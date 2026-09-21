@@ -315,6 +315,13 @@ class FlyWidget(QObject):
                 write_config(cfg)
                 self.cfg = cfg
             return {"ok": True}
+        if cmd.startswith("fly:wardrobe:"):
+            try:
+                info = json.loads(cmd[len("fly:wardrobe:"):] or "{}")
+            except ValueError:
+                info = {}
+            exam.open_wardrobe(str(info.get("costume", "none")), info.get("stats") or {})
+            return {"ok": True}
         if cmd == "fly:rename":
             self.rename()
             return {"ok": True}

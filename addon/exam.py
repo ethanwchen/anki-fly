@@ -286,3 +286,52 @@ def _open_exam_dialog() -> None:
     dlg = ExamDialog(payload)
     mw._anki_fly_exam = dlg
     dlg.show()
+
+
+class WardrobeDialog(QDialog):
+    def __init__(self, costume: str, stats: dict) -> None:
+        super().__init__(mw)
+        self.setWindowTitle("Fly Wardrobe")
+        self.resize(820, 560)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        self.costume, self.stats = costume, stats
+        self.web = AnkiWebView(parent=self, title="anki_fly_wardrobe")
+        self.web.set_bridge_command(self.on_cmd, self)
+        self.web.set_open_links_externally(False)
+        from . import sex
+        self.web.load_url(QUrl(f"{mw.serverURL()}_addons/{PKG}/web/costumes.html?sex={sex()}"))
+        lay.addWidget(self.web)
+
+    def on_cmd(self, cmd: str):
+        try:
+            fly = getattr(mw, "_anki_fly", None)
+            if cmd == "costume:ready":
+                if fly and fly._refresh_if_updated("wardrobe_version", self.web):
+                    return {"ok": True}
+                self.web.eval(f"window.wardrobe.load({json.dumps(self.costume)}, {json.dumps(self.stats)})")
+                return {"ok": True}
+            if cmd.startswith("costume:set:"):
+                name = cmd[len("costume:set:"):][:32]
+                if fly:
+                    fly.send({"type": "costume", "name": name})
+                return {"ok": True}
+            if cmd == "costume:close":
+                self.close()
+                return {"ok": True}
+        except Exception:
+            pass
+        return None
+
+    def closeEvent(self, evt) -> None:  # noqa: N802
+        try:
+            self.web.cleanup()
+        except Exception:
+            pass
+        super().closeEvent(evt)
+
+
+def open_wardrobe(costume: str = "none", stats: dict | None = None) -> None:
+    dlg = WardrobeDialog(costume, stats or {})
+    mw._anki_fly_wardrobe = dlg
+    dlg.show()
