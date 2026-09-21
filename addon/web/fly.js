@@ -101,6 +101,7 @@ class AnkiFly {
     if (this.sprite.setSpecies) this.sprite.setSpecies(this.sex === 'female' ? 'female' : 'wild');
     this.brainTitle = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses from ${this.sex === 'female' ? 'FlyWire FAFB v783' : 'MaleCNS v1.0'}`;
     $('brain').title = this.brainTitle + '. Hover a dot to see which neuron it is.';
+    $('count').textContent = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses`;
     this.updateSession();
     window.addEventListener('resize', () => { try { this.brain.resize(); this.sprite.resize(); } catch (e) { console.warn(e); } });
     this.wireControls();
@@ -443,7 +444,7 @@ class AnkiFly {
     if (asleep && !this.saidSleepy) { this.saidSleepy = true; this.maybeSay('sleepy', {}, { every: 1, force: true }); }
     if (!asleep) this.saidSleepy = false;
     if ((this.frameNo = (this.frameNo | 0) + 1) % 15 === 0) {
-      $('hz').textContent = `${(spikes * 1000 / Math.max(1, simMs) / this.meta.n).toFixed(1)} Hz`; $('hz').title = 'mean firing rate per neuron';
+      $('hz').textContent = `${st} · ${(spikes * 1000 / Math.max(1, simMs) / this.meta.n).toFixed(2)} Hz/neuron`; $('hz').title = 'fly state · mean firing rate per neuron';
     }
   }
 
@@ -470,7 +471,7 @@ class AnkiFly {
     const pref = this.pref(m);
     bar.style.width = `${50 + pref * 50}%`;
     bar.className = pref > 0.05 ? 'good' : (pref < -0.05 ? 'warn' : 'neutral');
-    lab.textContent = `fly memory · seen ${m.seen}× · ${pref > 0.3 ? 'knows it' : pref < -0.3 ? 'still learning' : 'getting there'}`;
+    lab.textContent = `fly memory · seen ${m.seen}× · ${pref > 0.3 ? 'likes it' : pref < -0.3 ? 'still learning' : 'getting there'}`;
   }
 
   // ---------- streaks ----------
