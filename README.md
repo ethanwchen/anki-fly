@@ -11,8 +11,6 @@ Full demo video: [docs/anki-fly-demo.mp4](docs/anki-fly-demo.mp4)
 
 The fly sits an exam on your deck:
 
-![Fly Exam](docs/exam.gif)
-
 ## What it does
 
 - **Every card is a smell.** The note id picks 6 of 61 olfactory glomeruli; their projection
