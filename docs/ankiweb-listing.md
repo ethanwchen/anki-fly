@@ -22,7 +22,7 @@ Supports 25.02 to current (leave the max open so it shows as "25.02+").
 
 **Anki Fly** puts a tiny fruit fly in the corner of Anki. It sits at a desk and studies your cards with you. Its brain is not a cartoon: it is a slice of the real fruit fly connectome (MaleCNS v1.0, Janelia and Google, 2026) running as a spiking neuron simulation while you review.
 
-![Anki Fly widget](https://raw.githubusercontent.com/ethanwchen/anki-fly/main/docs/widget.png)
+![Anki Fly widget](https://raw.githubusercontent.com/ethanwchen/anki-fly/main/docs/widget.gif)
 
 **How it works**
 
@@ -30,6 +30,9 @@ Supports 25.02 to current (leave the max open so it shows as "25.02+").
 - Your answers are dopamine. Good and Easy fire the fly's reward neurons, Again fires its punishment neurons, and the same learning rule real flies use rewires its synapses. The fly builds its own memory of your deck, and you can watch the neurons fire.
 - The fly presses its own Again / Hard / Good / Easy buttons along with you, celebrates streaks, grooms when you stall, and falls asleep at its desk if you leave.
 - Hover the brain to see which neuron and neurotransmitter is under your cursor.
+- Already have years of reviews? Tools > Anki Fly > Sync replays your review history into the fly's brain.
+
+![Fly Exam](https://raw.githubusercontent.com/ethanwchen/anki-fly/main/docs/exam.gif)
 
 **Fly Exam** (Ctrl+Shift+E)
 

@@ -26,6 +26,7 @@ const FACTS = [
   'When you press Again, my avoidance is left alone and my approach is weakened.',
   'I forget slowly: depressed synapses recover toward baseline over hours.',
   'Real flies remember a punished odor for about a day. I remember until you delete memory.json.',
+  'Been using Anki for years? Tools → Anki Fly → Sync, and I will replay your whole history into my synapses.',
 ];
 
 class AnkiFly {
@@ -146,6 +147,7 @@ class AnkiFly {
         document.body.classList.toggle('focus', !!this.cfg.focus);
         $('focus-on').textContent = this.cfg.focus ? '● on' : '';
         if (this.cfg.focus) { $('bubble').classList.remove('show'); this.setStatus('deep focus · the fly is studying quietly'); }
+        else if ((this.statusText || '').startsWith('deep focus')) this.setStatus('back to studying');
         this.brain.resize(); this.sprite.resize();
         break;
       case 'amnesia':
@@ -233,6 +235,9 @@ class AnkiFly {
       case 'loadMemory':
         this.loadMemory(ev.data);
         break;
+      case 'sync':
+        this.syncHistory(ev.notes, ev.reviews);
+        break;
     }
   }
 
@@ -305,7 +310,7 @@ class AnkiFly {
     this.lastFrame = now;
     const asleep = this.state === 'sleep' || this.state === 'sleepDesk';
     const simMs = wall * this.cfg.speed * (asleep ? 0.4 : 1);
-    const steps = Math.max(1, Math.round(simMs / this.sim.p.dt));
+    const steps = this.syncing ? 0 : Math.max(1, Math.round(simMs / this.sim.p.dt));
     let spikes = 0;
     for (let s = 0; s < steps; s++) {
       const sp = this.sim.tick();
@@ -351,6 +356,37 @@ class AnkiFly {
     bar.style.width = `${50 + pref * 50}%`;
     bar.className = pref > 0.05 ? 'good' : (pref < -0.05 ? 'bad' : 'neutral');
     lab.textContent = `fly memory · seen ${m.seen}× · ${pref > 0.3 ? 'likes it' : pref < -0.3 ? 'dreads it' : 'unsure'}`;
+  }
+
+  // ---------- history replay ----------
+  async syncHistory(notes, reviews) {
+    const sim = this.sim, g = this.g, total = notes.length;
+    this.syncing = true;
+    this.say(`replaying ${reviews.toLocaleString()} reviews… hold on`, 6000);
+    let done = 0, changed = 0;
+    for (let i = 0; i < total; i++) {
+      const n = notes[i];
+      const odor = this.odorFor(String(n.nid)).flatMap(k => g.PN_glomeruli[k]);
+      sim.elig.fill(0);                          // no cross-talk between notes
+      sim.stimulate(odor, 150, 120); sim.run(120); sim.clearStim(odor);
+      const kcs = new Set(g.KC.filter(k => sim.elig[k] > 0.2));
+      // reward depresses avoidance, punishment depresses approach; saturating so a year of reviews doesn't floor everything
+      const reward = Math.min(2.5, 0.35 * n.good + 0.6 * n.easy);
+      const punish = Math.min(2.5, 0.6 * n.again + 0.2 * n.hard);
+      if (reward > 0) changed += sim.dopamine(1, reward);
+      if (punish > 0) changed += sim.dopamine(0, punish);
+      const m = this.memory[String(n.nid)] || { seen: 0 };
+      m.seen += n.n; m.approach = sim.memoryDrive(kcs, 0); m.avoid = sim.memoryDrive(kcs, 1);
+      this.memory[String(n.nid)] = m;
+      done++;
+      if (i % 25 === 24) { this.setStatus(`syncing memories · ${done.toLocaleString()} / ${total.toLocaleString()} notes`); await new Promise(r => requestAnimationFrame(r)); }
+    }
+    sim.elig.fill(0);
+    this.dirty = true; this.save(); this.syncing = false;
+    this.setStatus(`synced · ${total.toLocaleString()} notes remembered`);
+    this.updateSession(); this.updateMemoryBar();
+    this.say(`done. I now remember ${Object.keys(this.memory).length.toLocaleString()} cards from ${reviews.toLocaleString()} reviews. ${changed.toLocaleString()} synapses changed.`, 8000);
+    this.force('celebrate', 900);
   }
 
   // ---------- persistence ----------

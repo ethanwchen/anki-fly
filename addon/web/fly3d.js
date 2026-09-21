@@ -248,18 +248,7 @@ export class FlySprite {
     this.buttonPos = { again: [0.4, 0.34], hard: [0.47, 0.12], good: [0.47, -0.1], easy: [0.4, -0.32] };
     const BTN = { again: 0xe5484d, hard: 0xe0a53a, good: 0x5fbf6b, easy: 0x4f8ff0 };
     for (const b in BTN) this.props[b] = mkButton(BTN[b], this.buttonPos[b][0], this.buttonPos[b][1]);
-    // desk lamp at the back-right corner
-    const lampMat = new THREE.MeshStandardMaterial({ color: 0x2d3038, roughness: 0.5, metalness: 0.5 });
-    const lamp = new THREE.Group(); lamp.position.set(-0.5, 0, -0.42); lamp.scale.setScalar(0.75); lamp.rotation.y = -0.6; G.add(lamp);
-    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.04, 20), lampMat); foot.position.y = 0.02; lamp.add(foot);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.6, 8), lampMat); pole.position.y = 0.32; lamp.add(pole);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.34, 8), lampMat);
-    arm.position.set(0.14, 0.62, -0.1); arm.rotation.z = -1.2; arm.rotation.x = 0.6; lamp.add(arm);
-    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.19, 0.2, 20, 1, true),
-      new THREE.MeshStandardMaterial({ color: 0x2f6b4c, roughness: 0.55, side: THREE.DoubleSide, emissive: 0xffc070, emissiveIntensity: 0.15 }));
-    shade.position.set(0.3, 0.6, -0.1); shade.rotation.z = 0.55; shade.rotation.x = -0.25; lamp.add(shade);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff1c8 }));
-    bulb.position.set(0.33, 0.53, -0.12); lamp.add(bulb);
+    // warm pool of light over the desk (the lamp itself is off-screen)
     this.lampLight = new THREE.PointLight(0xffc98a, 9, 2.4, 1.8);
     G.add(this.lampLight); this.lampLight.position.set(-0.05, 0.5, -0.05);
     this.lampWorldLight = true;

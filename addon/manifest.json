@@ -1,7 +1,7 @@
 {
   "package": "anki_fly",
   "name": "Anki Fly",
-  "human_version": "0.1.0",
+  "human_version": "0.1.1",
   "min_point_version": 250200,
   "homepage": "https://github.com/ethanwchen/anki-fly"
 }

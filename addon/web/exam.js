@@ -79,6 +79,8 @@ class Exam {
     $('phase').textContent = `The fly has studied ${known} of your cards before. Sniffing…`;
     const rng = mulberry32(seed);
     const results = [];
+    // pace the exam so you can watch the fly work: ~150 ms per card, at most ~10 s in total
+    const paceMs = Math.min(150, 10000 / cards.length);
     this.sprite.setState(this.desk ? 'think' : 'walk');
     const t0 = performance.now();
     for (let i = 0; i < cards.length; i++) {
@@ -99,15 +101,15 @@ class Exam {
       const fsrsCorrect = u < c.r;         // what FSRS alone predicts, same random draw
       results.push({ ...c, pref, flyP, p, correct, fsrsCorrect, kc: kcs.size, spikes: sp });
       this.sim.run(120); // let it settle
-      if (i % 4 === 0 || i === cards.length - 1) {
+      if (paceMs >= 40 || i % 4 === 0 || i === cards.length - 1) {
         $('progress').firstElementChild.style.width = `${(i + 1) / cards.length * 100}%`;
         const row = document.createElement('div');
         row.className = correct ? 'ok' : 'no';
         row.innerHTML = `<span>${correct ? '✓' : '✗'}</span><b>${esc(c.front)}</b><span>${pct(p)}</span>`;
         $('ticker').prepend(row);
         while ($('ticker').children.length > 40) $('ticker').lastChild.remove();
-        this.sprite.setState(this.desk ? 'write' : (correct ? 'proboscis' : 'groom'));
-        await new Promise(r => requestAnimationFrame(r));
+        this.sprite.setState(this.desk ? (i % 2 ? 'write' : 'think') : (correct ? 'proboscis' : 'groom'));
+        await new Promise(r => setTimeout(r, paceMs));
       }
     }
     this.running = false;

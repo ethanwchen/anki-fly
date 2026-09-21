@@ -150,6 +150,29 @@ class FlyWidget(QObject):
     def toggle_focus(self) -> None:
         self.set_focus(not self.focus)
 
+    def sync_history(self) -> None:
+        """Replay the collection's review history into the fly's brain (aggregated per note)."""
+        from aqt.utils import askUser, tooltip
+        if not mw.col:
+            return
+        rows = mw.col.db.all(
+            "select c.nid, r.ease, r.id from revlog r join cards c on c.id = r.cid "
+            "where r.ease > 0 and r.type in (0, 1, 2) order by r.id")
+        if not rows:
+            tooltip("No review history yet. The fly shrugs.")
+            return
+        notes: dict[int, dict] = {}
+        for nid, ease, rid in rows:
+            n = notes.setdefault(int(nid), {"nid": int(nid), "n": 0, "again": 0, "hard": 0, "good": 0, "easy": 0, "last": 0})
+            n["n"] += 1
+            n[("again", "hard", "good", "easy")[max(1, min(4, ease)) - 1]] += 1
+            n["last"] = int(rid // 1000)
+        items = sorted(notes.values(), key=lambda x: -x["last"])[:20000]
+        if not askUser(f"Replay {len(rows):,} reviews of {len(items):,} notes into the fly's brain?\n\n"
+                       "This takes a few seconds and adds to what it already remembers."):
+            return
+        self.send({"type": "sync", "notes": items, "reviews": len(rows)})
+
     def toggle_visible(self) -> None:
         """Ctrl+Shift+F / Tools menu: hide for this session, or bring back (and un-minimize)."""
         if self.closed_this_session or self.minimized:
@@ -251,6 +274,9 @@ def setup() -> None:
     test.setShortcut(QKeySequence("Ctrl+Shift+E"))
     test.triggered.connect(exam.open_exam_dialog)
     menu.addAction(test)
+    sync = QAction("Sync the fly with my review history…", mw)
+    sync.triggered.connect(fly.sync_history)
+    menu.addAction(sync)
     amnesia = QAction("Give the fly amnesia (reset its memory)", mw)
     amnesia.triggered.connect(lambda: _amnesia(fly))
     menu.addAction(amnesia)

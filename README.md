@@ -5,7 +5,11 @@ slice of the real **MaleCNS v1.0** connectome (Janelia FlyEM + Google Research, 
 leaky-integrate-and-fire spiking simulation. Your cards are its odors, your answers are its
 dopamine, and you can watch the neurons fire.
 
-![widget](docs/widget.png)
+![The fly studying with you](docs/widget.gif)
+
+The fly sits an exam on your deck:
+
+![Fly Exam](docs/exam.gif)
 
 ## What it does
 
@@ -23,6 +27,8 @@ dopamine, and you can watch the neurons fire.
   gauge), with the fly's connectome memory blended in at 25% (the fun part), plus true retention,
   again rate, stability-per-minute, consistency and backlog from your review log, and a diagnosis
   with the learning-science reason for each flag.
+- **Sync with your history.** Tools → Anki Fly → Sync replays your whole review log into the fly's
+  synapses (aggregated per note), so a year of Anki becomes a year of fly memories in seconds.
 - **Minimize / hide.** Hover the widget for `–` (collapse to a tiny fly) and `×` (hide for this
   session). `Ctrl+Shift+F` toggles it. Options in the add-on config.
 
