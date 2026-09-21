@@ -2,31 +2,33 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Fly friends</title>
+<title>Fly race</title>
 <style>
-  :root { color-scheme: light dark; --ink: #24262c; --ink2: #6b7180; --line: rgba(0,0,0,0.08); --card: rgba(0,0,0,0.04); --good: #2fa866; }
+  :root { color-scheme: light dark; --ink: #24262c; --ink2: #6b7180; --line: rgba(0,0,0,0.08); --card: rgba(0,0,0,0.04); --good: #2fa866; --accent: #46c9b3; }
   @media (prefers-color-scheme: dark) { :root { --ink: #e8eaf0; --ink2: #9aa0b0; --line: rgba(255,255,255,0.09); --card: rgba(255,255,255,0.05); } }
   html, body { margin: 0; background: transparent; font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); }
   #wrap { padding: 4px 2px; }
   #head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  #head b { font-size: 14px; } #head .code { font-family: ui-monospace, Menlo, monospace; background: var(--card); padding: 2px 8px; border-radius: 6px; }
-  #head .spacer { flex: 1; }
+  #head b { font-size: 14px; } #head .code { font-family: ui-monospace, Menlo, monospace; background: var(--card); padding: 2px 8px; border-radius: 6px; cursor: pointer; }
+  #head .sub { color: var(--ink2); } #head .spacer { flex: 1; }
   button { font: inherit; font-size: 12px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
-  #row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
-  .fr { flex: 0 0 150px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 8px 6px; text-align: center; }
-  .fr canvas { width: 134px; height: 110px; display: block; margin: 0 auto 4px; border-radius: 8px; background: rgba(0,0,0,0.12); }
-  .fr .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .fr .st { color: var(--ink2); font-size: 11.5px; }
-  .fr.on .nm::before { content: "●"; color: var(--good); font-size: 9px; margin-right: 5px; vertical-align: 1px; }
-  .fr.off { opacity: .6; }
-  #empty { color: var(--ink2); padding: 12px 0; }
+  .row { display: grid; grid-template-columns: 22px 40px 1fr 160px 90px 60px; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 10px; }
+  .row.me { background: var(--card); }
+  .rk { color: var(--ink2); text-align: right; font-variant-numeric: tabular-nums; }
+  .ic { width: 40px; height: 40px; border-radius: 50%; background: var(--card); }
+  .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row.on .nm::before { content: "●"; color: var(--good); font-size: 9px; margin-right: 5px; vertical-align: 1px; }
+  .you { color: var(--ink2); font-weight: 400; font-size: 11px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; } .bar div { height: 100%; background: var(--accent); border-radius: 3px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; } .days { color: var(--ink2); font-size: 11.5px; text-align: right; }
+  #empty { color: var(--ink2); padding: 8px; }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <div id="head"><b>Fly friends</b><span class="code" id="code">…</span><span class="spacer"></span><button id="add">Add a friend</button></div>
-  <div id="row"></div>
-  <div id="empty" hidden>No friends yet. Share your code, or add a friend's.</div>
+  <div id="head"><b>Fly race</b><span class="sub" id="week"></span><span class="spacer"></span><span class="code" id="code" title="your fly code">…</span><button id="add">Add a friend</button></div>
+  <div id="list"></div>
+  <div id="empty" hidden>Add a friend's fly code to race them on cards reviewed this week.</div>
 </div>
 <script src="vendor/three.min.js"></script>
 <script type="module" src="friends.js"></script>

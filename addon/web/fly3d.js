@@ -7,6 +7,8 @@
 // Costumes (procedural props parented to the head): setCostume(name), getCostume(); names in FlySprite.costumes (COSTUMES below)
 // Lite mode for many small side-by-side flies: new FlySprite(canvas, { lite: true }) or setLite(true): plain small desk, no props,
 // no IK reach solving, no overlay sprites, pixel ratio capped at 1.5; all states/costumes/species still work.
+// { lite: true, board: false } gives a lite fly with no desk at all (transparent floor).
+// Face icons: await FlySprite.icon({ costume, species, size }) -> PNG data URL of the fly's head (transparent background).
 //
 // Geometry: anatomically detailed Drosophila body from TuragaLab/flybody (Apache-2.0),
 // decimated and baked into vendor/fly.bin (see vendor/LICENSE-flybody.txt). The MuJoCo
@@ -361,7 +363,8 @@ async function loadFlyBin(url) {
 export class FlySprite {
   constructor(canvas, opts = {}) {
     if (!THREE) return FlySprite.fallback(canvas, 'three.js not loaded');
-    this.lite = !!opts.lite;
+    this.lite = !!opts.lite; this.board = opts.board !== false; this.fixedSize = opts.width && opts.height ? [opts.width, opts.height] : null;
+    this.whenReady = new Promise(res => { this._readyRes = res; });
     try { this.init(canvas); } catch (e) { return FlySprite.fallback(canvas, e && e.message); }
   }
   setLite(on) {
@@ -446,8 +449,9 @@ export class FlySprite {
     this.sceneGroup = null; this.props = {}; this.reach = {}; this.sceneName = name;
     if (name && this.lite) this.buildLite(); else if (name === 'study') this.buildStudy(); else if (name === 'exam') this.buildExam();
     // dark-room mood in scenes: dim the ambient/key lights so the lamp pool carries the picture
-    const L = this.baseLights, k = name ? 0.5 : 1;
-    this.hemi.intensity = L.hemi * k; this.key.intensity = L.key * (name ? 0.7 : 1); this.rimL.intensity = L.rim * (name ? 0.12 : 1); this.hemi.color.set(name ? 0xd8c8b0 : 0xdfe6ff); this.fillL.intensity = L.fill * k;
+    const L = this.baseLights, k = name && this.board ? 0.5 : 1;
+    const dim = !!(name && this.board);
+    this.hemi.intensity = L.hemi * k; this.key.intensity = L.key * (dim ? 0.7 : 1); this.rimL.intensity = L.rim * (dim ? 0.12 : 1); this.hemi.color.set(dim ? 0xd8c8b0 : 0xdfe6ff); this.fillL.intensity = L.fill * k;
     if (name && !SCENE_STATES.has(this.state)) this.setState(this.state === 'sleep' ? 'sleepDesk' : 'study');
     this.needsRender = true;
     this.layout();
@@ -525,13 +529,48 @@ export class FlySprite {
     this.needsRender = true;
   }
   getCostume() { return this.costume || 'none'; }
+
+  // Aim the camera at the face (front, slightly above) so the head fills the frame; used for icons.
+  frameHead(fill = 0.78) {
+    this.mover.updateWorldMatrix(true, true);
+    const head = this.byName.head, H = this.head;
+    const m = head.matrixWorld, c = H.c.clone().applyMatrix4(m);
+    const nm = new THREE.Matrix3().getNormalMatrix(m);
+    const fwd = H.fwd.clone().applyMatrix3(nm).normalize(), up = H.up.clone().applyMatrix3(nm).normalize();
+    const W = H.halfW * 2 * this.root.scale.x * 1.15;
+    const d = (W / fill / 2) / Math.tan(this.fovY / 2 * Math.PI / 180);
+    const dir = fwd.clone().multiplyScalar(0.8).add(up.clone().multiplyScalar(0.45)).normalize();
+    this.camera.position.copy(c).addScaledVector(dir, d);
+    this.camera.near = d * 0.1; this.camera.far = d * 10; this.camera.updateProjectionMatrix();
+    this.camera.up.copy(up); this.camera.lookAt(c);
+    this.needsRender = true;
+  }
+  dispose() {
+    try { this.renderer.dispose(); this.renderer.forceContextLoss(); } catch {}
+  }
+  // Static face icon (PNG data URL, transparent background) for leaderboards etc.
+  static async icon({ costume = 'none', species = 'wild', size = 96 } = {}) {
+    const c = document.createElement('canvas');
+    const f = new FlySprite(c, { lite: true, board: false, width: size, height: size });
+    if (!f.whenReady) return null;   // 2D fallback: no icons
+    await f.whenReady;
+    f.setSpecies(species); f.setCostume(costume); f.setState('still'); f.update(0);
+    f.renderer.setPixelRatio(1); f.renderer.setSize(size, size, false);
+    f.camera.aspect = 1; f.frameHead();
+    f.renderer.render(f.scene, f.camera);
+    const url = c.toDataURL('image/png');
+    f.dispose();
+    return url;
+  }
   static get costumes() { return COSTUMES.slice(); }
 
   // lite desk: a plain small dark top, nothing else
   buildLite() {
     const G = this.sceneGroup = new THREE.Group(); this.stage.add(G);
-    const desk = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 1.1), new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.6 }));
-    desk.position.set(0.05, -0.05, 0); G.add(desk);
+    if (this.board) {
+      const desk = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 1.1), new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.6 }));
+      desk.position.set(0.05, -0.05, 0); G.add(desk);
+    }
     this.fitPoints = [[0.55, 0.02, 0.3], [0.55, 0.02, -0.3], [-0.5, 0.02, 0.3], [-0.5, 0.02, -0.3]];
     this.buttonPos = { again: [0.4, 0.27], hard: [0.4, 0.09], good: [0.4, -0.09], easy: [0.4, -0.27] };
     this.reachSide = { again: 'left', hard: 'left' };
@@ -789,9 +828,10 @@ export class FlySprite {
     this.abdLen.abdomen_7 = 0.03;
     this.applySpecies(this.species || 'wild');
     this.headBasis();
-    if (this.costume) this.setCostume(this.costume);
     this.ready = true;
+    if (this.costume) this.setCostume(this.costume);
     this.layout();
+    if (this._readyRes) this._readyRes(this);
   }
 
   // Draw-call reduction: the distal tarsal segments + claw never articulate, and the abdominal 'lower' plates share the
@@ -878,7 +918,7 @@ export class FlySprite {
 
   // ---------- API ----------
   resize() {
-    const w = this.canvas.clientWidth || 84, h = this.canvas.clientHeight || 140;
+    const w = this.fixedSize ? this.fixedSize[0] : (this.canvas.clientWidth || 84), h = this.fixedSize ? this.fixedSize[1] : (this.canvas.clientHeight || 140);
     this.w = w; this.h = h;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
@@ -957,7 +997,7 @@ export class FlySprite {
   draw() {
     if (!this.ready) { this.renderer.clear(); return; }
     const cw = this.canvas.clientWidth, ch = this.canvas.clientHeight;
-    if (cw && ch && (cw !== this.w || ch !== this.h)) { this.resize(); this.update(0); }   // layout changed under us
+    if (!this.fixedSize && cw && ch && (cw !== this.w || ch !== this.h)) { this.resize(); this.update(0); }   // layout changed under us
     if (!this.needsRender) return;          // 'still' renders once, then idles
     this.renderer.render(this.scene, this.camera);
     this.needsRender = this.state !== 'still';

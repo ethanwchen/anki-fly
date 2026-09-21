@@ -117,6 +117,26 @@ class Friends:
         if mood in MOODS:
             self.mood = mood
 
+    def week_key(self) -> str:
+        y, w, _ = time.gmtime().tm_year, int(time.strftime("%V")), 0
+        return f"{time.strftime('%G')}-W{time.strftime('%V')}"
+
+    def week_stats(self) -> dict:
+        """Cards reviewed and days studied this ISO week (Monday, local rollover) from the review log."""
+        try:
+            col = mw.col
+            if not col:
+                return {"days": 0, "reviews": 0}
+            cutoff = col.sched.day_cutoff                      # next rollover, seconds
+            today_start = cutoff - 86400
+            weekday = time.localtime(today_start).tm_wday      # Monday = 0
+            week_start_ms = (today_start - weekday * 86400) * 1000
+            reviews = col.db.scalar("select count() from revlog where id > ? and ease > 0 and type in (0,1,2)", week_start_ms) or 0
+            days = col.db.scalar("select count(distinct (id/1000 - ?) / 86400) from revlog where id > ? and ease > 0", today_start - weekday * 86400, week_start_ms) or 0
+            return {"days": int(days), "reviews": int(reviews)}
+        except Exception:
+            return {"days": 0, "reviews": 0}
+
     def note_answer(self, ease: int) -> None:
         self.session["cards"] += 1
         if ease == 1:
@@ -127,10 +147,9 @@ class Friends:
             return
         if self.mock():
             self.friends = [dict(f) for f in MOCK_FRIENDS]
-            for f in self.friends:
+            for i, f in enumerate(self.friends):
                 f["lastSeen"] = time.time() - (0 if f["online"] else 5 * 3600)
-                if f["online"]:
-                    f["mood"] = random.choice(["study", "study", "pressGood", "pressAgain", "celebrate", "dance"])
+                f["weekReviews"], f["weekDays"] = [412, 980, 150][i], [4, 6, 2][i]
             return
         if not self.identity()["token"]:
             self.ensure_registered(self.heartbeat)
@@ -139,12 +158,20 @@ class Friends:
         body = {**self.profile(), "mood": "offline" if offline else self.mood,
                 "cardsPerMin": round(self.session["cards"] / mins, 2),
                 "sessionCards": self.session["cards"], "sessionAgain": self.session["again"],
-                "race": {"days": len((read_state().get("progress") or {}).get("days") or []),
-                         "reviews": self.session["cards"], "trueRetention": None}}
+                "race": {**self.week_stats(), "trueRetention": None}}
         def done(res):
             if res and isinstance(res.get("friends"), list):
                 self.friends = res["friends"]
+                self._bg(lambda: self._call("GET", f"/v1/race?week={self.week_key()}"), self._apply_race)
         self._bg(lambda: self._call("POST", "/v1/heartbeat", body), done)
+
+    def _apply_race(self, res) -> None:
+        if not res or not isinstance(res.get("standings"), list):
+            return
+        by_code = {r.get("code"): r for r in res["standings"]}
+        for f in self.friends:
+            r = by_code.get(f.get("code")) or {}
+            f["weekReviews"], f["weekDays"] = int(r.get("reviews") or 0), int(r.get("days") or 0)
 
     # ---- friend management (menu)
     def show_code(self) -> None:
@@ -199,14 +226,17 @@ class Friends:
             return ""
         return (f'<div style="margin:18px auto 0;max-width:720px">'
                 f'<iframe id="flyfriends" src="/_addons/{PKG}/web/friends.html" '
-                f'style="width:100%;height:230px;border:0;border-radius:12px;background:transparent" '
+                f'style="width:100%;height:{60 + 52 * (1 + len(self.friends))}px;border:0;border-radius:12px;background:transparent" '
                 f'title="Fly friends"></iframe></div>')
 
     def snapshot(self) -> dict:
         me = self.profile()
         me["code"] = self.identity()["code"] or ""
-        me["mood"] = self.mood
-        return {"me": me, "friends": self.friends, "error": self.last_error, "mock": self.mock(), "now": time.time()}
+        ws = self.week_stats()
+        me["weekReviews"], me["weekDays"], me["online"] = ws["reviews"], ws["days"], True
+        # friends: presence and weekly totals only; their moods/answers stay private
+        friends = [{k: f.get(k) for k in ("code", "name", "species", "costume", "online", "lastSeen", "weekReviews", "weekDays")} for f in self.friends]
+        return {"me": me, "friends": friends, "week": self.week_key(), "error": self.last_error, "mock": self.mock(), "now": time.time()}
 
 
 def setup() -> None:

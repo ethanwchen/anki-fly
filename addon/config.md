@@ -8,7 +8,7 @@ A fruit fly whose brain is a real slice of the MaleCNS connectome, studying alon
 - `fly_name`: your fly's name (also: gear menu → Name the fly).
 - `width`: widget width in pixels (height is always half); drag the top-left corner of the widget to resize. `margin`: distance from the corner.
 - `opacity`: 0–1.
-- `show_outside_review`: keep the fly visible on the deck list / overview too.
+- `show_outside_review`: keep the fly visible on the deck overview and other screens too (never on the deck list itself).
 - `show_memory_bar`: show the "fly memory" bar for the current card.
 - `thought_bubbles`: the fly comments on what just happened in its brain.
 - `pacing_nudges`: when your last 20 answers get slower and wronger than the start of the session, the fly suggests a break (at most every 15 minutes).

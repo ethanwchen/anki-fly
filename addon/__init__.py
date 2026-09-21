@@ -195,7 +195,8 @@ class FlyWidget(QObject):
     def _should_show(self) -> bool:
         enabled = bool(self.cfg.get("enabled", True)) and not self.closed_this_session
         in_review = mw.state == "review"
-        return enabled and not getattr(self, "too_small", False) and (in_review or bool(self.cfg.get("show_outside_review", True)))
+        home = mw.state == "deckBrowser"      # never on the home screen; it has the friends panel instead
+        return enabled and not getattr(self, "too_small", False) and not home and (in_review or bool(self.cfg.get("show_outside_review", True)))
 
     @safe
     def update_visibility(self) -> None:

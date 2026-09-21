@@ -1,0 +1,8 @@
+name = "anki-fly-friends"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+# Create the namespace with `npx wrangler kv namespace create FLY` and paste the id it prints here.
+[[kv_namespaces]]
+binding = "FLY"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
