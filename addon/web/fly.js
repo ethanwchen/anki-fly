@@ -414,7 +414,7 @@ class AnkiFly {
     this.stats.spikes += spikes;
     this.sim.recover(simMs);
     const st = this.chooseState(now);
-    if (st !== this.state) { this.state = st; document.body.dataset.state = st; }
+    if (st !== this.state) { this.state = st; document.body.dataset.state = st; py('fly:mood:' + st); }
     this.sprite.setState(st);
     try { this.sprite.update(wall); this.sprite.draw(); }
     catch (e) {

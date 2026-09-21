@@ -5,6 +5,8 @@
 //         think, write, sleepDesk, still (scene 'exam'); setScene('study'|'exam'|null)
 // Species/variants (materials + vertex colours only): setSpecies('wild'|'white'|'ebony'|'yellow'|'female'), getSpecies()
 // Costumes (procedural props parented to the head): setCostume(name), getCostume(); names in FlySprite.costumes (COSTUMES below)
+// Lite mode for many small side-by-side flies: new FlySprite(canvas, { lite: true }) or setLite(true): plain small desk, no props,
+// no IK reach solving, no overlay sprites, pixel ratio capped at 1.5; all states/costumes/species still work.
 //
 // Geometry: anatomically detailed Drosophila body from TuragaLab/flybody (Apache-2.0),
 // decimated and baked into vendor/fly.bin (see vendor/LICENSE-flybody.txt). The MuJoCo
@@ -357,9 +359,17 @@ async function loadFlyBin(url) {
 
 // ---------- the sprite ----------
 export class FlySprite {
-  constructor(canvas) {
+  constructor(canvas, opts = {}) {
     if (!THREE) return FlySprite.fallback(canvas, 'three.js not loaded');
+    this.lite = !!opts.lite;
     try { this.init(canvas); } catch (e) { return FlySprite.fallback(canvas, e && e.message); }
+  }
+  setLite(on) {
+    on = !!on; if (on === this.lite) return;
+    this.lite = on;
+    this.dpr = Math.min(on ? 1.5 : 2, window.devicePixelRatio || 1); this.renderer.setPixelRatio(this.dpr);
+    if (this.sceneName) { const n = this.sceneName; this.sceneName = null; this.setScene(n); }
+    this.resize();
   }
   static fallback(canvas, why) {
     console.warn('[fly3d] falling back to 2D sprite:', why);
@@ -367,7 +377,7 @@ export class FlySprite {
   }
   init(canvas) {
     this.canvas = canvas;
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.dpr = Math.min(this.lite ? 1.5 : 2, window.devicePixelRatio || 1);
     this.state = 'idle'; this.stateT = 0; this.prevState = 'idle'; this.blendT = 1;
     this.x = 0.52; this.dir = 1; this.t = 0;
     this.ready = false; this.failed = false;
@@ -434,7 +444,7 @@ export class FlySprite {
     if (this.sceneGroup) { this.stage.remove(this.sceneGroup); this.sceneGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     if (this.lampLight) { this.scene.remove(this.lampLight); this.lampLight = null; }
     this.sceneGroup = null; this.props = {}; this.reach = {}; this.sceneName = name;
-    if (name === 'study') this.buildStudy(); else if (name === 'exam') this.buildExam();
+    if (name && this.lite) this.buildLite(); else if (name === 'study') this.buildStudy(); else if (name === 'exam') this.buildExam();
     // dark-room mood in scenes: dim the ambient/key lights so the lamp pool carries the picture
     const L = this.baseLights, k = name ? 0.5 : 1;
     this.hemi.intensity = L.hemi * k; this.key.intensity = L.key * (name ? 0.7 : 1); this.rimL.intensity = L.rim * (name ? 0.12 : 1); this.hemi.color.set(name ? 0xd8c8b0 : 0xdfe6ff); this.fillL.intensity = L.fill * k;
@@ -516,6 +526,18 @@ export class FlySprite {
   getCostume() { return this.costume || 'none'; }
   static get costumes() { return COSTUMES.slice(); }
 
+  // lite desk: a plain small dark top, nothing else
+  buildLite() {
+    const G = this.sceneGroup = new THREE.Group(); this.stage.add(G);
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 1.1), new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.6 }));
+    desk.position.set(0.05, -0.05, 0); G.add(desk);
+    this.fitPoints = [[0.55, 0.02, 0.3], [0.55, 0.02, -0.3], [-0.5, 0.02, 0.3], [-0.5, 0.02, -0.3]];
+    this.buttonPos = { again: [0.4, 0.27], hard: [0.4, 0.09], good: [0.4, -0.09], easy: [0.4, -0.27] };
+    this.reachSide = { again: 'left', hard: 'left' };
+    this.reachTargets = {};
+    this.sceneYaw = this.az - Math.PI / 2 + 0.55;
+  }
+
   // stage frame: x = fly forward, z = fly right, y up; desk top is y = 0
   buildStudy() {
     const G = this.sceneGroup = new THREE.Group(); this.stage.add(G);
@@ -523,28 +545,28 @@ export class FlySprite {
     const desk = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.12, 1.5), wood); desk.position.set(0.15, -0.06, 0); G.add(desk);
     const edge = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.05, 1.5), new THREE.MeshStandardMaterial({ color: 0x2c1d14, roughness: 0.8 }));
     edge.position.set(0.15, -0.145, 0); G.add(edge);
-    this.fitPoints = [[0.48, 0.1, 0.42], [0.55, 0.1, 0.12], [0.55, 0.1, -0.1], [0.48, 0.1, -0.4], [0.32, 0.1, 0.42], [0.34, 0.08, -0.66], [-0.04, 0.08, -0.7], [0.0, 0.08, -0.46]];
+    this.fitPoints = [[0.4, 0.1, 0.34], [0.46, 0.1, 0.1], [0.46, 0.1, -0.08], [0.4, 0.1, -0.32], [0.28, 0.1, 0.34], [0.26, 0.08, -0.56], [-0.02, 0.08, -0.6], [0.0, 0.08, -0.4]];
     // index cards: a small stack, top one face up with writing
     const cardMat = new THREE.MeshStandardMaterial({ color: 0xf2eee2, roughness: 0.9 });
-    const stack = new THREE.Group(); stack.position.set(0.14, 0, -0.56); stack.rotation.y = 0.35; G.add(stack);
+    const stack = new THREE.Group(); stack.position.set(0.1, 0, -0.48); stack.rotation.y = 0.35; G.add(stack);
     for (let i = 0; i < 5; i++) {
-      const c = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.012, 0.26), cardMat);
+      const c = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.012, 0.22), cardMat);
       c.position.set((Math.sin(i * 2.1)) * 0.012, 0.006 + i * 0.012, (Math.cos(i * 1.7)) * 0.012); c.rotation.y = (i - 2) * 0.05; stack.add(c);
     }
-    const top = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.26), new THREE.MeshStandardMaterial({ map: cardTexture(), roughness: 0.9 }));
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.22), new THREE.MeshStandardMaterial({ map: cardTexture(), roughness: 0.9 }));
     top.rotation.x = -Math.PI / 2; top.position.set(0, 0.0125 + 5 * 0.012, 0); stack.add(top);
     this.props.card = stack;
     // two buttons: red (Again) and green (Good)
     const mkButton = (color, x, z) => {
       const g = new THREE.Group(); g.position.set(x, 0, z); G.add(g);
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.035, 20), new THREE.MeshStandardMaterial({ color: 0x3a3d46, roughness: 0.6, metalness: 0.3 }));
-      base.position.y = 0.0175; g.add(base);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.077, 0.085, 0.03, 20), new THREE.MeshStandardMaterial({ color: 0x3a3d46, roughness: 0.6, metalness: 0.3 }));
+      base.position.y = 0.015; g.add(base);
       const capMat = new THREE.MeshPhysicalMaterial({ color, roughness: 0.45, clearcoat: 0.6, emissive: color, emissiveIntensity: 0.05 });
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.066, 0.074, 0.05, 20), capMat); cap.position.y = 0.035 + 0.025; g.add(cap);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.063, 0.045, 20), capMat); cap.position.y = 0.03 + 0.0225; g.add(cap);
       return { g, cap, capMat, restY: cap.position.y };
     };
     // Anki order left -> right on screen (+z is screen-left): Again, Hard, Good, Easy, in a slight arc toward the fly
-    this.buttonPos = { again: [0.4, 0.34], hard: [0.47, 0.12], good: [0.47, -0.1], easy: [0.4, -0.32] };
+    this.buttonPos = { again: [0.34, 0.27], hard: [0.4, 0.09], good: [0.4, -0.09], easy: [0.34, -0.27] };
     const BTN = { again: 0xe5484d, hard: 0xe0a53a, good: 0x5fbf6b, easy: 0x4f8ff0 };
     for (const b in BTN) this.props[b] = mkButton(BTN[b], this.buttonPos[b][0], this.buttonPos[b][1]);
     // warm pool of light over the desk (the lamp itself is off-screen)
@@ -555,11 +577,11 @@ export class FlySprite {
     this.sceneYaw = this.az - Math.PI / 2 + 0.55;   // az - pi/2 faces the camera; +0.55 turns it toward screen-right
     this.reachSide = { again: 'left', hard: 'left' };   // targets on the fly's left (+z) use the left front leg
     this.reachTargets = {
-      again: () => this.stageToWorld(0.4, 0.09, 0.34),
-      hard: () => this.stageToWorld(0.47, 0.09, 0.12),
-      good: () => this.stageToWorld(0.47, 0.09, -0.1),
-      easy: () => this.stageToWorld(0.4, 0.09, -0.32),
-      card: () => this.stageToWorld(0.16, 0.09, -0.44),
+      again: () => this.stageToWorld(0.34, 0.09, 0.27),
+      hard: () => this.stageToWorld(0.4, 0.09, 0.09),
+      good: () => this.stageToWorld(0.4, 0.09, -0.09),
+      easy: () => this.stageToWorld(0.34, 0.09, -0.27),
+      card: () => this.stageToWorld(0.12, 0.09, -0.36),
     };
   }
 
@@ -663,7 +685,7 @@ export class FlySprite {
 
   // lazily solve the reach poses for the current scene (needs the fly parked in its scene pose)
   ensureReach() {
-    if (!this.ready || !this.sceneName || this.reach.done) return;
+    if (!this.ready || !this.sceneName || this.reach.done || this.lite) return;
     this.mover.rotation.y = this.sceneYaw; this.mover.position.x = 0; this.lift.position.y = 0; this.lift.rotation.set(0, 0, 0);
     this.stage.rotation.y = this.sceneYaw; this.stage.updateWorldMatrix(true, true);
     this.mover.updateWorldMatrix(true, true);
@@ -815,7 +837,7 @@ export class FlySprite {
   layout() {
     const aspect = this.camera.aspect;
     let visH, el, az, look;
-    if (this.sceneName === 'study') {
+    if (this.sceneName === 'study' || (this.sceneName && this.lite)) {
       visH = 1.55; el = 0.72; az = 0.85; look = new THREE.Vector3(0.12, 0.1, 0.02);
     } else if (this.sceneName === 'exam') {
       visH = 1.25; el = 0.7; az = 0.95; look = new THREE.Vector3(0.3, 0.06, 0.12);
@@ -831,8 +853,8 @@ export class FlySprite {
     this.camera.lookAt(this.lookAt);
     this.visW = visH * aspect;
     this.visH = visH;
-    if (this.sceneName === 'study') this.sceneYaw = az - Math.PI / 2 + 0.55;
-    if (this.sceneName === 'exam') this.sceneYaw = az - Math.PI / 2 + 0.6;
+    if (this.sceneName === 'study' || this.lite) this.sceneYaw = az - Math.PI / 2 + 0.55;
+    else if (this.sceneName === 'exam') this.sceneYaw = az - Math.PI / 2 + 0.6;
     if (this.sceneName && this.ready) this.fitScene(el, az);
     this.reach = {};   // camera/heading changed: re-solve reaches lazily
     this.needsRender = true;
@@ -960,9 +982,10 @@ export class FlySprite {
           this.tapT -= dt;
           if (this.tapT <= 0) { this.tapT = 2600 + Math.random() * 4000; this.tapA = 1; }
           this.tapA = Math.max(0, this.tapA - dt / 700);
-          if (this.tapA > 0 && R.card) {
+          if (this.tapA > 0 && (R.card || this.lite)) {
             const k = Math.sin(this.tapA * Math.PI), tap = Math.max(0, Math.sin(this.tapA * TAU * 2)) * 0.12;
-            this.applyPose(R.card, k); this.addJ('tibia_T1_right', tap * k);
+            if (R.card) this.applyPose(R.card, k); else this.leg('T1', 'right', { swing: 0.35 * k, lift: 0.4 * k });
+            this.addJ('tibia_T1_right', tap * k);
           }
           if (!still) { this.addJ('head_twist', Math.sin(T * 0.6) * 0.06); this.addJ('head', Math.sin(T * 0.45) * 0.03); }
         } else if (PRESS[s]) {
@@ -975,6 +998,7 @@ export class FlySprite {
           pressBtn = PRESS[s];
           const P = R[pressBtn]; if (P) this.applyPose(P, reach);
           const sd = (this.reachSide || {})[pressBtn] || 'right';
+          if (!P) this.leg('T1', sd, { swing: 0.45 * reach, lift: 0.55 * reach });   // no IK (lite): generic reach forward
           this.addJ(`tibia_T1_${sd}`, pressAmt * 0.18 * reach); this.addJ(`femur_T1_${sd}`, pressAmt * 0.08 * reach);
           const bz = this.buttonPos[pressBtn][1];
           this.addJ('head', 0.12 * reach); this.addJ('head_abduct', (-0.25 + bz * 0.6) * reach);   // watch the button
@@ -1045,8 +1069,9 @@ export class FlySprite {
         const buzz = Math.sin(st * 0.9) * Math.sin(st * 0.37);
         yaw = (st / 1000) * TAU * 2.2 * spinK; roll = Math.PI * flop + Math.sin(st * 0.02) * 0.12 * spinK;
         // rolled onto its back: the roll pivot is at the feet, so lift the body by its height to keep it on the desk
-        bodyY = spinK * (0.03 + Math.abs(buzz) * 0.04) + Math.sin(Math.PI * flop / 2) ** 2 * this.bodyH * 0.62;
-        wingBlur = spinK * (0.6 + 0.4 * buzz); wingSpread = spinK * (0.6 + 0.3 * buzz) + flop * 0.9;
+        bodyY = spinK * (0.03 + Math.abs(buzz) * 0.04) + Math.sin(Math.PI * flop / 2) ** 2 * this.bodyH * 0.7;
+        wingBlur = spinK * (0.6 + 0.4 * buzz); wingSpread = spinK * (0.6 + 0.3 * buzz);
+        this.flopWings = flop;   // applied in the wing block: splayed sideways and raised so they clear the desk
         const flail = spinK * 0.9 + flop * 0.35, tw = flop * (Math.max(0, Math.sin(st * 0.05)) > 0.7 ? 1 : 0);
         for (const side of ['left', 'right']) for (const seg of ['T1', 'T2', 'T3']) {
           const ph2 = st * 0.03 + (side === 'left' ? 1.3 : 0) + (seg === 'T2' ? 2 : seg === 'T3' ? 4 : 0);
@@ -1193,6 +1218,9 @@ export class FlySprite {
         this.addJ(`wing_roll_${side}`, -0.4 * wingSpread + flap * 0.2 * wingBlur);
         this.addJ(`wing_pitch_${side}`, 0.35 * wingSpread);
       }
+    } else if (s === 'crashout' && this.flopWings > 0) {
+      const f = this.flopWings;
+      for (const side of ['left', 'right']) { this.addJ(`wing_yaw_${side}`, -1.0 * f); this.addJ(`wing_roll_${side}`, 0.9 * f); this.addJ(`wing_pitch_${side}`, 0.3 * f); }
     } else if (wingFlat > 0) {
       for (const side of ['left', 'right']) { this.addJ(`wing_roll_${side}`, -0.25 * wingFlat); this.addJ(`wing_pitch_${side}`, 0.15 * wingFlat); }
     } else if (!still) {
@@ -1263,8 +1291,8 @@ export class FlySprite {
     }
 
     // overlays, anchored to the head
-    const asleep = s === 'sleep' || s === 'sleepDesk';
-    const spark = s === 'proboscis' && st < 1400;
+    const asleep = (s === 'sleep' || s === 'sleepDesk') && !this.lite;
+    const spark = s === 'proboscis' && st < 1400 && !this.lite;
     if (asleep || spark) { this.mover.updateWorldMatrix(true, true); this.byName.head.getWorldPosition(this.headW || (this.headW = new THREE.Vector3())); }
     const hw = this.headW || new THREE.Vector3();
     this.zzz.forEach((z, i) => {

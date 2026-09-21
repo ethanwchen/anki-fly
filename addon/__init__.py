@@ -322,6 +322,11 @@ class FlyWidget(QObject):
                 info = {}
             exam.open_wardrobe(str(info.get("costume", "none")), info.get("stats") or {})
             return {"ok": True}
+        if cmd.startswith("fly:mood:"):
+            fr = getattr(mw, "_anki_fly_friends", None)
+            if fr:
+                fr.set_mood(cmd[len("fly:mood:"):][:20])
+            return {"ok": True}
         if cmd == "fly:rename":
             self.rename()
             return {"ok": True}
@@ -387,6 +392,9 @@ class FlyWidget(QObject):
         except Exception:
             ms = 0
         self.send({"type": "rate", "ease": int(ease), "ms": ms, "ivl": int(card.ivl)})
+        fr = getattr(mw, "_anki_fly_friends", None)
+        if fr:
+            fr.note_answer(int(ease))
 
     @safe
     def on_review_end(self) -> None:
@@ -437,6 +445,19 @@ def setup() -> None:
     menu.addAction(amnesia)
     # profile switches: memory is per add-on, but the review state resets
     gui_hooks.profile_did_open.append(lambda: fly.send({"type": "session_end"}))
+
+    from . import friends
+    fr = friends.setup()
+    menu.addSeparator()
+    code = QAction("Friends: show my fly code", mw)
+    code.triggered.connect(fr.show_code)
+    menu.addAction(code)
+    add = QAction("Friends: add a friend…", mw)
+    add.triggered.connect(fr.add_friend)
+    menu.addAction(add)
+    leave = QAction("Friends: leave", mw)
+    leave.triggered.connect(fr.leave)
+    menu.addAction(leave)
 
 
 @safe

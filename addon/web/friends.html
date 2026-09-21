@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fly friends</title>
+<style>
+  :root { color-scheme: light dark; --ink: #24262c; --ink2: #6b7180; --line: rgba(0,0,0,0.08); --card: rgba(0,0,0,0.04); --good: #2fa866; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #e8eaf0; --ink2: #9aa0b0; --line: rgba(255,255,255,0.09); --card: rgba(255,255,255,0.05); } }
+  html, body { margin: 0; background: transparent; font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif; color: var(--ink); }
+  #wrap { padding: 4px 2px; }
+  #head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  #head b { font-size: 14px; } #head .code { font-family: ui-monospace, Menlo, monospace; background: var(--card); padding: 2px 8px; border-radius: 6px; }
+  #head .spacer { flex: 1; }
+  button { font: inherit; font-size: 12px; background: var(--card); border: 1px solid var(--line); color: var(--ink); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  #row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+  .fr { flex: 0 0 150px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 8px 6px; text-align: center; }
+  .fr canvas { width: 134px; height: 110px; display: block; margin: 0 auto 4px; border-radius: 8px; background: rgba(0,0,0,0.12); }
+  .fr .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fr .st { color: var(--ink2); font-size: 11.5px; }
+  .fr.on .nm::before { content: "●"; color: var(--good); font-size: 9px; margin-right: 5px; vertical-align: 1px; }
+  .fr.off { opacity: .6; }
+  #empty { color: var(--ink2); padding: 12px 0; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="head"><b>Fly friends</b><span class="code" id="code">…</span><span class="spacer"></span><button id="add">Add a friend</button></div>
+  <div id="row"></div>
+  <div id="empty" hidden>No friends yet. Share your code, or add a friend's.</div>
+</div>
+<script src="vendor/three.min.js"></script>
+<script type="module" src="friends.js"></script>
+</body>
+</html>
