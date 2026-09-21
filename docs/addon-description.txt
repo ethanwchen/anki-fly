@@ -1,0 +1,47 @@
+AnkiWeb listing for Drosophil-Anki (v0.2.1)
+============================================
+
+Title (under 80 chars):  Drosophil-Anki: a fruit fly with a real brain studies with you
+Tags:                    Gamification Companion Neuroscience Focus
+Support page:            https://github.com/ethanwchen/anki-fly/issues
+Branches:                minimum 25.02, maximum 26.09 (shows as 25.02+)
+File:                    anki-fly.ankiaddon from https://github.com/ethanwchen/anki-fly/releases/latest
+
+Paste everything between the lines into the Description box (Markdown).
+
+----------------------------------------------------------------------------------------------------
+
+**Drosophil-Anki** puts a tiny, anatomically real fruit fly at a desk in the corner of Anki. It studies your cards with you, and its brain is real: a slice of the fruit fly connectome (MaleCNS v1.0, Janelia and Google, 2026) running as a live spiking-neuron simulation while you review.
+
+![Drosophil-Anki](https://raw.githubusercontent.com/ethanwchen/anki-fly/main/docs/widget.gif)
+
+**A brain, not a mascot**
+
+- Every card is a smell to the fly. Good and Easy fire its reward neurons, Again fires its punishment neurons, and its synapses rewire the way a real fly learns. Watch the neurons fire; hover the brain to see which neuron is under the cursor.
+- **Sync** replays your existing review history into the fly's brain in seconds.
+- Two real brains: the male fly runs the MaleCNS connectome, the female fly runs the FlyWire connectome.
+
+**A fly with a personality**
+
+- A 3D fly from the flybody anatomical model, at a little desk with your index cards and its own Again / Hard / Good / Easy buttons, which it presses along with you.
+- Moods from your session: it dances and does zoomies on a strong run, crashes out and sulks after too many Agains, dozes off at its desk when you leave.
+- It speaks rarely, on purpose. Only for things worth noticing, and only for streaks that are impressive by your own standards.
+
+**Fly Exam** (Ctrl+Shift+E): pick decks and the fly sits an exam on them, pencil in hand. The score is Anki's own FSRS prediction of what you would remember right now, explained in plain words, with your true retention, again rate and consistency, and a short diagnosis with the research reason behind each flag.
+
+![Fly Exam](https://raw.githubusercontent.com/ethanwchen/anki-fly/main/docs/exam.gif)
+
+**Make it yours**: name it, give it a team tag, level it up with XP from every review, and dress it from a **Wardrobe** of 40 costumes unlocked by studying (hats, sunglasses, cat ears, seasonal outfits, and a medical and language-learner set).
+
+**Fly race** (optional): a weekly leaderboard on the home screen of cards reviewed by you and your friends, each fly's face next to its name, a green dot for who is studying right now, and profiles you can click. You choose what friends can see. Only your fly's name, look, level and weekly totals are shared, never cards, decks or individual answers. Turn it on under Tools > Drosophil-Anki.
+
+**Not distracting**: Deep Focus (Ctrl+Shift+D) keeps it still and silent; minimize, resize or hide it (Ctrl+Shift+F). A gentle nudge to take a break when your answers get slower and wronger, and a chip pointing at the cards you keep missing.
+
+**Install**: download, restart Anki, start reviewing. Anki 25.02 or newer on desktop (Mac, Windows, Linux). Tested most on macOS; please report issues on GitHub rather than in reviews: https://github.com/ethanwchen/anki-fly/issues
+
+Open source (MIT): https://github.com/ethanwchen/anki-fly. MaleCNS data CC BY 4.0; FlyWire data CC BY-NC 4.0 (this add-on is free and non-commercial); neuron model after Shiu et al. 2024; fly body from the flybody project (Apache-2.0); three.js (MIT).
+
+----------------------------------------------------------------------------------------------------
+
+Changelog line for this release:
+v0.2.1: 3D fly with desk scenes and moods, 40 costumes with a Wardrobe, male and female flies with two connectomes, levels and team tags, weekly fly race with profiles and privacy controls, quieter bubbles, resizable widget, many robustness fixes.
