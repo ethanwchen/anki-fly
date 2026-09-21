@@ -5,11 +5,13 @@ positions the widget, forwards review events, persists the fly's memory, and hos
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
+import traceback
 
 from aqt import gui_hooks, mw
-from aqt.qt import QAction, QColor, QEvent, QKeySequence, QObject, QShortcut, Qt, QUrl
+from aqt.qt import QAction, QColor, QEvent, QKeySequence, QObject, Qt, QUrl
 from aqt.webview import AnkiWebView
 
 from . import exam
@@ -22,6 +24,25 @@ STATE_PATH = os.path.join(USER_FILES, "state.json")   # runtime toggles (minimiz
 MINI_SIZE = 44
 
 mw.addonManager.setWebExports(__name__, r"web/.*")
+
+try:
+    log = mw.addonManager.get_logger(__name__)
+except Exception:  # very old Anki
+    import logging
+    log = logging.getLogger(__name__)
+
+
+def safe(fn):
+    """Never let an add-on error reach Anki's error dialog; log it and carry on."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            log.error("anki_fly: %s failed\n%s", fn.__name__, traceback.format_exc())
+            return None
+    return wrapper
+
 
 
 def get_config() -> dict:
@@ -89,9 +110,11 @@ class FlyWidget(QObject):
         self.web.raise_()
 
     # ---- layout
+    @safe
     def _apply_transparency(self) -> None:
         self.web.page().setBackgroundColor(QColor(0, 0, 0, 0))
 
+    @safe
     def apply_config(self) -> None:
         self.cfg = get_config()
         if self.minimized:
@@ -111,10 +134,14 @@ class FlyWidget(QObject):
         }})
 
     def eventFilter(self, obj, evt) -> bool:  # noqa: N802
-        if evt.type() in (QEvent.Type.Resize, QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.Move):
-            self.reposition()
+        try:
+            if evt.type() in (QEvent.Type.Resize, QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.Move):
+                self.reposition()
+        except Exception:
+            pass
         return False
 
+    @safe
     def reposition(self) -> None:
         host = mw.form.centralwidget
         m = int(self.cfg.get("margin", 12))
@@ -125,21 +152,30 @@ class FlyWidget(QObject):
         x = m if "left" in corner else host.width() - w - m
         y = top + m if "top" in corner else host.height() - h - m - bottom
         self.web.move(max(0, x), max(0, y))
+        # too small to fit: hide rather than cover the reviewer
+        self.too_small = host.width() < w + 2 * m or host.height() < h + top + bottom + 2 * m
+        self.web.setVisible(self._should_show())
         self.web.raise_()
 
-    def update_visibility(self) -> None:
+    def _should_show(self) -> bool:
         enabled = bool(self.cfg.get("enabled", True)) and not self.closed_this_session
         in_review = mw.state == "review"
-        show = enabled and (in_review or bool(self.cfg.get("show_outside_review", True)))
+        return enabled and not getattr(self, "too_small", False) and (in_review or bool(self.cfg.get("show_outside_review", True)))
+
+    @safe
+    def update_visibility(self) -> None:
+        show = self._should_show()
         self.web.setVisible(show)
         if show:
             self.web.raise_()
 
+    @safe
     def set_minimized(self, value: bool) -> None:
         self.minimized = value
         write_state(minimized=value)
         self.apply_config()
 
+    @safe
     def set_focus(self, value: bool) -> None:
         self.focus = value
         write_state(focus=value)
@@ -147,9 +183,11 @@ class FlyWidget(QObject):
         from aqt.utils import tooltip
         tooltip("Deep Focus on — the fly will stay quiet." if value else "Deep Focus off.", period=1500)
 
+    @safe
     def toggle_focus(self) -> None:
         self.set_focus(not self.focus)
 
+    @safe
     def sync_history(self) -> None:
         """Replay the collection's review history into the fly's brain (aggregated per note)."""
         from aqt.utils import askUser, tooltip
@@ -173,6 +211,7 @@ class FlyWidget(QObject):
             return
         self.send({"type": "sync", "notes": items, "reviews": len(rows)})
 
+    @safe
     def toggle_visible(self) -> None:
         """Ctrl+Shift+F / Tools menu: hide for this session, or bring back (and un-minimize)."""
         if self.closed_this_session or self.minimized:
@@ -183,9 +222,14 @@ class FlyWidget(QObject):
             self.update_visibility()
 
     # ---- bridge
+    @safe
     def send(self, ev: dict) -> None:
+        from aqt.qt import sip
+        if sip.isdeleted(self.web):
+            return
         self.web.eval(f"window.fly && window.fly.event({json.dumps(ev)})")
 
+    @safe
     def on_cmd(self, cmd: str):
         if cmd == "fly:ready":
             self.load_memory()
@@ -222,26 +266,36 @@ class FlyWidget(QObject):
             return {"ok": True}
         return None
 
+    @safe
     def load_memory(self) -> None:
         data = read_memory()
         if data:
             self.send({"type": "loadMemory", "data": data})
 
     # ---- review events
+    @safe
     def on_question(self, card) -> None:
         deck = mw.col.decks.name(card.current_deck_id()) if mw.col else ""
         self.send({"type": "question", "nid": int(card.nid), "cid": int(card.id), "deck": deck,
                    "reps": int(card.reps), "lapses": int(card.lapses), "ivl": int(card.ivl)})
 
+    @safe
     def on_answer_shown(self, card) -> None:
         self.send({"type": "answer"})
 
+    @safe
     def on_answered(self, reviewer, card, ease: int) -> None:
-        self.send({"type": "rate", "ease": int(ease), "ms": int(card.time_taken()), "ivl": int(card.ivl)})
+        try:
+            ms = int(card.time_taken())
+        except Exception:
+            ms = 0
+        self.send({"type": "rate", "ease": int(ease), "ms": ms, "ivl": int(card.ivl)})
 
+    @safe
     def on_review_end(self) -> None:
         self.send({"type": "session_end"})
 
+    @safe
     def on_state(self, new_state, old_state) -> None:
         self.update_visibility()
         self.reposition()
@@ -249,6 +303,7 @@ class FlyWidget(QObject):
             self.send({"type": "wake"})
 
 
+@safe
 def setup() -> None:
     if getattr(mw, "_anki_fly", None):
         return
@@ -264,14 +319,17 @@ def setup() -> None:
     menu = mw.form.menuTools.addMenu("Anki Fly")
     toggle = QAction("Show / hide the fly", mw)
     toggle.setShortcut(QKeySequence("Ctrl+Shift+F"))
+    toggle.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
     toggle.triggered.connect(fly.toggle_visible)
     menu.addAction(toggle)
     focus = QAction("Deep Focus (fly stays quiet)", mw)
     focus.setShortcut(QKeySequence("Ctrl+Shift+D"))
+    focus.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
     focus.triggered.connect(fly.toggle_focus)
     menu.addAction(focus)
     test = QAction("Fly Exam: test the fly on your cards…", mw)
     test.setShortcut(QKeySequence("Ctrl+Shift+E"))
+    test.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
     test.triggered.connect(exam.open_exam_dialog)
     menu.addAction(test)
     sync = QAction("Sync the fly with my review history…", mw)
@@ -280,13 +338,11 @@ def setup() -> None:
     amnesia = QAction("Give the fly amnesia (reset its memory)", mw)
     amnesia.triggered.connect(lambda: _amnesia(fly))
     menu.addAction(amnesia)
-    mw._anki_fly_shortcuts = [
-        QShortcut(QKeySequence("Ctrl+Shift+F"), mw, activated=fly.toggle_visible),
-        QShortcut(QKeySequence("Ctrl+Shift+D"), mw, activated=fly.toggle_focus),
-        QShortcut(QKeySequence("Ctrl+Shift+E"), mw, activated=exam.open_exam_dialog),
-    ]
+    # profile switches: memory is per add-on, but the review state resets
+    gui_hooks.profile_did_open.append(lambda: fly.send({"type": "session_end"}))
 
 
+@safe
 def _amnesia(fly: FlyWidget) -> None:
     from aqt.utils import askUser, tooltip
     if not askUser("Wipe everything the fly has learned about your cards?"):

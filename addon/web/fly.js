@@ -1,9 +1,12 @@
 // Anki Fly: glue between Anki events, the LIF sim, the brain view and the fly sprite.
 import { Sim, parseGraph } from './sim.js';
 import { BrainView } from './brain_view.js';
-import { FlySprite } from './fly3d.js';
+import { FlySprite as FlySprite2D } from './fly_sprite.js';
 
 const $ = (id) => document.getElementById(id);
+// Anki shows a scary error dialog for any uncaught error in an add-on page; keep ours in the console.
+window.addEventListener('error', (e) => { console.warn('[anki-fly]', e.message); e.preventDefault(); });
+window.addEventListener('unhandledrejection', (e) => { console.warn('[anki-fly]', e.reason); e.preventDefault(); });
 // Anki injects window.pycmd at DocumentReady, after module scripts run, so check lazily.
 const hasPy = () => typeof window.pycmd === 'function';
 const py = (msg) => { if (hasPy()) window.pycmd(msg); else console.log('[pycmd]', msg.slice(0, 120)); };
@@ -62,12 +65,13 @@ class AnkiFly {
     this.kcSet = new Set(this.g.KC);
     meta.denseGroups = this.kcSet;
     this.brain = new BrainView($('brain'), meta);
-    this.sprite = new FlySprite($('fly'));
+    this.sprite = await makeSprite($('fly'));
     if (this.sprite.setScene) this.sprite.setScene('study');
     this.brainTitle = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses from MaleCNS v1.0`;
     $('brain').title = this.brainTitle + '. Hover a dot to see which neuron it is.';
     this.updateSession();
-    window.addEventListener('resize', () => { this.brain.resize(); this.sprite.resize(); });
+    window.addEventListener('resize', () => { try { this.brain.resize(); this.sprite.resize(); } catch (e) { console.warn(e); } });
+    $('fly').addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('[anki-fly] WebGL context lost; using 2D sprite'); this.sprite = new FlySprite2D($('fly')); if (this.sprite.setScene) this.sprite.setScene('study'); });
     this.wireControls();
     this.lastFrame = performance.now();
     requestAnimationFrame((t) => this.frame(t));
@@ -137,6 +141,10 @@ class AnkiFly {
   // ---------- events from Anki ----------
   event(ev) {
     if (!this.sim) { (this.pending = this.pending || []).push(ev); return; }   // brain still loading
+    try { this._event(ev); } catch (e) { console.warn('[anki-fly] event failed', ev && ev.type, e); }
+  }
+
+  _event(ev) {
     this.lastEvent = performance.now();
     const g = this.g, sim = this.sim;
     switch (ev.type) {
@@ -306,6 +314,11 @@ class AnkiFly {
 
   // ---------- frame loop ----------
   frame(now) {
+    try { this._frame(now); } catch (e) { if (!this._frameErr) { this._frameErr = true; console.warn('[anki-fly] frame error', e); } }
+    requestAnimationFrame((t) => this.frame(t));
+  }
+
+  _frame(now) {
     const wall = Math.min(60, now - this.lastFrame);
     this.lastFrame = now;
     const asleep = this.state === 'sleep' || this.state === 'sleepDesk';
@@ -321,8 +334,8 @@ class AnkiFly {
     const st = this.chooseState(now);
     if (st !== this.state) { this.state = st; document.body.dataset.state = st; }
     this.sprite.setState(st);
-    this.sprite.update(wall);
-    this.sprite.draw();
+    try { this.sprite.update(wall); this.sprite.draw(); }
+    catch (e) { console.warn('[anki-fly] sprite failed, switching to 2D', e); this.sprite = new FlySprite2D($('fly')); }
     this.brain.draw(wall);
     if (!this.cfg.focus && now - this.lastEvent > 20000 && now - this.lastFact > 45000 && !asleep && !document.body.classList.contains('mini')) {
       this.lastFact = now;
@@ -331,7 +344,6 @@ class AnkiFly {
     if ((this.frameNo = (this.frameNo | 0) + 1) % 15 === 0) {
       $('hz').textContent = `${(spikes * 1000 / Math.max(1, simMs) / this.meta.n).toFixed(1)} Hz`; $('hz').title = 'mean firing rate per neuron';
     }
-    requestAnimationFrame((t) => this.frame(t));
   }
 
   updateSession() {
@@ -391,7 +403,10 @@ class AnkiFly {
 
   // ---------- persistence ----------
   save() {
-    if (!this.dirty || !this.sim.plastic) return;
+    if (!this.dirty || !this.sim || !this.sim.plastic) return;
+    try { this._save(); } catch (e) { console.warn('[anki-fly] save failed', e); }
+  }
+  _save() {
     const P = this.sim.plastic, w = [];
     for (let k = 0; k < P.edgeIdx.length; k++) w.push(+ (this.sim.w[P.edgeIdx[k]] / this.sim.w0[P.edgeIdx[k]]).toFixed(3));
     py('fly:save:' + JSON.stringify({ v: 1, ratio: w, memory: this.memory, stats: this.stats, streak: this.streak }));
@@ -411,9 +426,28 @@ class AnkiFly {
   }
 }
 
+async function makeSprite(canvas) {
+  try {
+    if (!window.THREE) throw new Error('three.js not loaded');
+    const mod = await import('./fly3d.js');
+    const sp = new mod.FlySprite(canvas);
+    sp.update(0); sp.draw();   // smoke test the WebGL path before committing to it
+    return sp;
+  } catch (e) {
+    console.warn('[anki-fly] 3D fly unavailable, using 2D sprite:', e.message);
+    return new FlySprite2D(canvas);
+  }
+}
+
 const fly = new AnkiFly();
 window.fly = fly;
-fly.init().catch(e => { $('status').textContent = 'failed to load brain: ' + e.message; console.error(e); });
+(async () => {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try { await fly.init(); return; }
+    catch (e) { console.warn('[anki-fly] init failed (attempt ' + attempt + ')', e); $('status').textContent = 'loading brain… retrying'; await new Promise(r => setTimeout(r, 1500 * attempt)); }
+  }
+  $('status').textContent = 'could not load the brain data. Reinstall the add-on?';
+})();
 
 // Dev panel when opened directly in a browser (no pycmd).
 if (new URLSearchParams(location.search).has('dev') || location.protocol === 'file:') {

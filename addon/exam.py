@@ -51,7 +51,10 @@ def collect_cards(search: str, limit: int = 2000) -> dict:
     cards = []
     decay_cache: dict[int, float] = {}
     for cid in cids[:limit]:
-        c = col.get_card(cid)
+        try:
+            c = col.get_card(cid)
+        except Exception:
+            continue
         did = c.current_deck_id()
         if did not in decay_cache:
             decay_cache[did] = _deck_decay(did)
@@ -75,8 +78,11 @@ def collect_cards(search: str, limit: int = 2000) -> dict:
             r, model = 0.9 ** (elapsed / max(1, c.ivl)), "sm2"
         else:
             r, model = 0.5, "learning"
-        note = c.note()
-        front = note.fields[0] if note.fields else ""
+        try:
+            note = c.note()
+            front = note.fields[0] if note.fields else ""
+        except Exception:
+            front = ""
         cards.append({
             "cid": cid, "nid": int(c.nid), "front": _strip(front)[:80],
             "deck": col.decks.name(did), "type": c.type, "queue": c.queue,
@@ -86,7 +92,7 @@ def collect_cards(search: str, limit: int = 2000) -> dict:
             "elapsed": elapsed, "r": r, "model": model,
             "desired_retention": getattr(c, "desired_retention", None),
         })
-    return {"cards": cards, "total_matching": len(cids), "search": search}
+    return {"cards": cards, "total_matching": len(cids), "search": search, "limit": limit}
 
 
 def _strip(html: str) -> str:
@@ -206,6 +212,12 @@ class ExamDialog(QDialog):
         lay.addWidget(self.web)
 
     def on_cmd(self, cmd: str):
+        try:
+            return self._on_cmd(cmd)
+        except Exception:
+            return None
+
+    def _on_cmd(self, cmd: str):
         if cmd == "exam:ready":
             self.web.eval(f"window.exam.start({json.dumps(self.payload)})")
             return {"ok": True}
@@ -221,7 +233,10 @@ class ExamDialog(QDialog):
         return None
 
     def closeEvent(self, evt) -> None:  # noqa: N802
-        self.web.cleanup()
+        try:
+            self.web.cleanup()
+        except Exception:
+            pass
         super().closeEvent(evt)
 
 
@@ -230,10 +245,12 @@ def open_exam_dialog() -> None:
         _open_exam_dialog()
     except Exception:
         import traceback
-        log = mw.addonManager.get_logger(__name__) if hasattr(mw.addonManager, "get_logger") else None
-        if log:
-            log.exception("Fly Exam failed")
-        raise
+        from aqt.utils import showWarning
+        try:
+            mw.addonManager.get_logger(__name__).exception("Fly Exam failed")
+        except Exception:
+            pass
+        showWarning("Anki Fly: the exam could not be prepared.\n\n" + traceback.format_exc()[-1500:], title="Anki Fly")
 
 
 def _open_exam_dialog() -> None:
