@@ -102,7 +102,8 @@ class AnkiFly {
     if (this.sprite.setSpecies) this.sprite.setSpecies(this.sex === 'female' ? 'female' : 'wild');
     this.brainTitle = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses from ${this.sex === 'female' ? 'FlyWire FAFB v783' : 'MaleCNS v1.0'}`;
     $('brain').title = this.brainTitle + '. Hover a dot to see which neuron it is.';
-    $('count').textContent = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses`;
+    const k = (n) => n >= 1000 ? Math.round(n / 1000).toLocaleString() + 'k' : String(n);
+    $('count').textContent = `${meta.n.toLocaleString()} neurons · ${k(meta.nnz)} synapses`;
     this.updateSession();
     window.addEventListener('resize', () => { try { this.brain.resize(); this.sprite.resize(); } catch (e) { console.warn(e); } });
     if (window.ResizeObserver) new ResizeObserver(() => { try { this.brain.resize(); this.sprite.resize(); } catch {} }).observe($('brain'));
@@ -455,7 +456,7 @@ class AnkiFly {
 
   updateSession() {
     const s = this.session, k = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
-    $('session').textContent = s.cards ? `${s.cards} cards · ${s.again} stung · ${k(s.synapses)} synapses rewired` : `${Object.keys(this.memory).length} cards remembered`;
+    $('session').textContent = s.cards ? `${s.cards} cards · ${s.again} stung · ${k(s.synapses)} synapses` : `${Object.keys(this.memory).length} cards remembered`;
     this.updateLevel();
   }
 

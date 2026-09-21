@@ -205,7 +205,10 @@ class FlyWidget(QObject):
             rx, ry, rw, rh = 0, top, host.width(), host.height() - top - bottom
         x = rx + m if "left" in corner else rx + rw - w - m
         y = ry + m if "top" in corner else ry + rh - h - m
-        self.web.move(max(0, x), max(0, y))
+        # never let it hang past the window edge
+        x = max(0, min(x, host.width() - w))
+        y = max(0, min(y, host.height() - h))
+        self.web.move(x, y)
         # too small to fit: hide rather than cover the reviewer
         self.too_small = rw < w + 2 * m or rh < h + 2 * m
         self.web.setVisible(self._should_show())

@@ -29,7 +29,8 @@ export class BrainView {
     for (let i = 0; i < n; i++) { xs[i] = xyz[3 * i]; ys[i] = xyz[3 * i + 1]; }
     xs.sort(); ys.sort();
     const q = (a, f) => a[Math.min(n - 1, Math.floor(f * n))];
-    this.bounds = { minx: q(xs, 0.005), maxx: q(xs, 0.995), miny: q(ys, 0.01), maxy: q(ys, 0.985) };
+    // keep (almost) every soma inside the frame; only true outliers (nerve-cord neurons) get clamped
+    this.bounds = { minx: q(xs, 0.001), maxx: q(xs, 0.999), miny: q(ys, 0.002), maxy: q(ys, 0.998) };
     this.px = new Float32Array(n); this.py = new Float32Array(n);
     this.resize();
   }
@@ -39,7 +40,7 @@ export class BrainView {
     this.canvas.width = Math.round(cssW * this.dpr); this.canvas.height = Math.round(cssH * this.dpr);
     this.w = this.canvas.width; this.h = this.canvas.height;
     const { minx, maxx, miny, maxy } = this.bounds;
-    const pad = 6 * this.dpr;
+    const pad = Math.max(6 * this.dpr, 0.06 * Math.min(this.w, this.h));   // breathing room so the top/bottom rows aren't cut
     const sx = (this.w - 2 * pad) / (maxx - minx || 1), sy = (this.h - 2 * pad) / (maxy - miny || 1);
     const s = Math.min(sx, sy);
     const ox = (this.w - s * (maxx - minx)) / 2, oy = (this.h - s * (maxy - miny)) / 2;

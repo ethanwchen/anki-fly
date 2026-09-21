@@ -1,4 +1,4 @@
-AnkiWeb listing for Drosophil-Anki (v0.2.2)
+AnkiWeb listing for Drosophil-Anki (v0.2.3)
 ============================================
 
 Title (under 80 chars):  Drosophil-Anki: a fruit fly with a real brain studies with you
@@ -44,4 +44,4 @@ Open source (MIT): https://github.com/ethanwchen/anki-fly. MaleCNS data CC BY 4.
 ----------------------------------------------------------------------------------------------------
 
 Changelog line for this release:
-v0.2.2: 3D fly with desk scenes and moods, 40 costumes with a Wardrobe, male and female flies with two connectomes, levels and team tags, weekly fly race with profiles and privacy controls, quieter bubbles, resizable widget, many robustness fixes.
+v0.2.3: 3D fly with desk scenes and moods, 40 costumes with a Wardrobe, male and female flies with two connectomes, levels and team tags, weekly fly race with profiles and privacy controls, quieter bubbles, resizable widget, many robustness fixes.

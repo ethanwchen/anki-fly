@@ -296,11 +296,8 @@ class Friends:
 
     # ---- the front-page panel (an iframe so it can render the friends' flies)
     def panel_html(self) -> str:
-        if not self.enabled():
-            return ""
-        if not self.consented():
-            return ('<div style="margin:18px auto 0;max-width:720px;color:#888;font-size:13px">Fly race is available: '
-                    'Tools → Drosophil-Anki → Friends: show my fly code to turn it on.</div>')
+        # Always shown: with no server (or before consent) it is your own weekly race; friends appear once
+        # a friends server is configured and you have agreed to share.
         return (f'<div style="margin:18px auto 0;max-width:720px">'
                 f'<iframe id="flyfriends" src="/_addons/{PKG}/web/friends.html" '
                 f'style="width:100%;height:{60 + 52 * (1 + len(self.friends)) + 190}px;border:0;border-radius:12px;background:transparent" '
@@ -313,6 +310,7 @@ class Friends:
     def snapshot(self) -> dict:
         me = self.profile()
         me["code"] = self.identity()["code"] or ""
+        me["local"] = not (self.enabled() and self.consented())
         ws = self.week_stats()
         me["weekReviews"], me["weekDays"], me["online"] = ws["reviews"], ws["days"], True
         me["joinedAt"] = read_state().get("friends_joined") or 0
@@ -343,7 +341,11 @@ def setup() -> None:
             if cmd == "list":
                 return (True, fr.snapshot())
             if cmd == "add":
-                fr.add_friend()
+                if not fr.enabled():
+                    showInfo("Friends need a friends server. Deploy the one in the add-on's GitHub repo (backend/), then put its "
+                             "https URL in Tools → Add-ons → Drosophil-Anki → Config as friends_server.")
+                else:
+                    fr.add_friend()
             elif cmd.startswith("remove:"):
                 fr.remove_friend(cmd[7:])
                 return (True, fr.snapshot())

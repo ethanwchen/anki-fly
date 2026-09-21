@@ -1,8 +1,8 @@
-Drosophil-Anki v0.2.2: done. (v0.2.1 on AnkiWeb is broken: the zip was missing the brain data. Upload this one.)
+Drosophil-Anki v0.2.3: done. (v0.2.1 on AnkiWeb is broken: the zip was missing the brain data. Upload this one.)
 
 Upload file:   ~/Desktop/Drosophil-Anki-release/anki-fly.ankiaddon  (same as the GitHub release asset)
 Listing text:  docs/addon-description.txt   (title, tags, support URL, branches, description, changelog line)
-Release:       https://github.com/ethanwchen/anki-fly/releases/tag/v0.2.2
+Release:       https://github.com/ethanwchen/anki-fly/releases/tag/v0.2.3
 AnkiWeb:       https://ankiweb.net/shared/info/888374074   (install code 888374074)
 
 Friends server: not deployed yet. From ~/Desktop/anki-fly/backend:
@@ -12,4 +12,4 @@ Then put the printed https URL into the add-on config as friends_server (or set 
 addon/config.json and re-release so everyone shares your server).
 
 Agents: renderer, female brain pack, backend, research, edge-case audit: finished and folded in.
-QA (real-Anki run): finished; its findings are fixed in v0.2.2.
+QA (real-Anki run): finished; its findings are fixed in v0.2.3.

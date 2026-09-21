@@ -17,9 +17,9 @@
     padding: 2rem 2.5rem 2.5rem 1.5rem; box-sizing: border-box; background: var(--bg); border: 1px solid var(--line); border-radius: 3.5rem;
     backdrop-filter: blur(10px); box-shadow: 0 1.5rem 6rem rgba(0,0,0,0.35); }
   #fly { width: 100%; height: 100%; min-height: 0; min-width: 0; display: block; border-radius: 2.5rem; }
-  #right { display: grid; grid-template-rows: 1fr auto auto auto auto; gap: 1rem; min-width: 0; min-height: 0; }
+  #right { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto auto auto; gap: .9rem; min-width: 0; min-height: 0; overflow: hidden; }
   #brain { width: 100%; height: 100%; min-height: 0; display: block; border-radius: 2rem; background: rgba(0,0,0,0.28); cursor: crosshair; }
-  #legend { display: flex; flex-wrap: nowrap; gap: 2rem; font-size: 2.25rem; color: var(--ink3); padding: 0 .5rem; white-space: nowrap; }
+  #legend { display: flex; flex-wrap: nowrap; gap: 2rem; font-size: 2.25rem; color: var(--ink3); padding: 0 .5rem; white-space: nowrap; overflow: hidden; min-width: 0; }
   #legend span::before { content: ""; display: inline-block; width: 1.5rem; height: 1.5rem; border-radius: 50%; margin-right: .75rem; vertical-align: 0; background: var(--c); }
   #legend .count { margin-left: auto; flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; } #legend .count::before { display: none; }
   #status { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 2.75rem; }
@@ -28,11 +28,12 @@
   #membar { height: 100%; width: 50%; transition: width .4s; border-radius: .75rem; }
   #membar.neutral { background: #6b7280; } #membar.good { background: var(--good); } #membar.warn { background: var(--warn); }
   #memlabel { color: var(--ink2); font-size: 2.5rem; white-space: nowrap; }
-  #foot { display: flex; align-items: end; justify-content: space-between; gap: 1.5rem; color: var(--ink3); font-size: 2.4rem; min-width: 0; padding-bottom: .5rem; line-height: 1.2; }
+  #foot { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 1.5rem; align-items: center; color: var(--ink3); font-size: 2.4rem; min-width: 0; padding-bottom: .5rem; line-height: 1.25; }
+  #foot #hz { grid-column: 1 / -1; text-align: right; }
   #session { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #hz { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+  #hz { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #level { color: var(--accent); font-weight: 600; white-space: nowrap; font-size: 2.2rem; }
-  #leech { background: rgba(242,193,78,0.14); color: var(--warn); border: 0; border-radius: 1.25rem; padding: .25rem 1.5rem; font: inherit; font-size: 2.4rem; cursor: pointer; white-space: nowrap; }
+  #leech { position: absolute; right: 2.5rem; bottom: 8.5rem; background: rgba(242,193,78,0.18); color: var(--warn); border: 0; border-radius: 1.25rem; padding: .25rem 1.5rem; font: inherit; font-size: 2.4rem; cursor: pointer; white-space: nowrap; }
   #leech:hover { background: rgba(242,193,78,0.28); }
 
   /* gear + menu */
@@ -77,7 +78,8 @@
     <div id="legend"><span style="--c:#50dcff">ACh</span><span style="--c:#ff6ebe">GABA</span><span style="--c:#ffbe46">Glu</span><span style="--c:#78ff8c">dopamine</span><span id="count" class="count"></span></div>
     <div id="status">waking up…</div>
     <div id="memrow"><div id="memory"><div id="membar" class="neutral"></div></div><div id="memlabel">fly memory</div></div>
-    <div id="foot"><span id="level" title="XP">Lv 1</span><div id="session"></div><button id="leech" hidden></button><div id="hz"></div></div>
+    <div id="foot"><span id="level" title="XP">Lv 1</span><div id="session"></div><div id="hz"></div></div>
+    <button id="leech" hidden></button>
   </div>
   <div id="grip" title="Drag to resize"></div>
   <button id="gear" title="Fly options" aria-label="Fly options" aria-haspopup="menu">⚙</button>

@@ -30,8 +30,10 @@ class Race {
     const data = await ask('list');
     if (!data) return;
     this.data = data;
-    $('code').textContent = data.me.code || 'no code yet';
+    $('code').textContent = data.me.local ? 'just you for now' : (data.me.code || 'no code yet');
+    $('code').title = data.me.local ? 'add a friends server in the add-on config to race friends' : 'your fly code';
     $('week').textContent = 'this week';
+    $('add').textContent = data.me.local ? 'Race friends…' : 'Add a friend';
     const rows = [{ ...data.me, me: true }, ...(data.friends || [])];
     rows.sort((a, b) => (b.weekReviews || 0) - (a.weekReviews || 0) || (b.weekDays || 0) - (a.weekDays || 0));
     const max = Math.max(1, ...rows.map(r => r.weekReviews || 0));
@@ -51,6 +53,7 @@ class Race {
       this.icon(r.species || 'wild', r.costume || 'none').then(u => { if (u) el.querySelector('.ic').src = u; });
     }
     $('empty').hidden = rows.length > 1;
+    $('empty').textContent = data.me.local ? 'Your fly races alone for now. Set up a friends server (Tools → Add-ons → Config) to race friends.' : "Add a friend's fly code to race them on cards reviewed this week.";
   }
   profile(r) {
     const box = $('profile'); box.hidden = false;
