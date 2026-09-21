@@ -14,6 +14,7 @@
 
 export interface Env {
   FLY: KVNamespace;
+  ADMIN_KEY?: string;   // wrangler secret; unlocks GET /v1/stats
 }
 
 // ---------- constants / allowlists ----------
@@ -383,10 +384,46 @@ async function handleRegister(env: Env, req: Request, now: number): Promise<Resp
   };
   applyProfile(user, patch);
   await Promise.all([putJSON(env, kUser(code), user), env.FLY.put(kTok(await sha256Hex(token)), code)]);
+  await bump(env, "stats:registrations");
   return json({ token, code }, 201);
 }
 
+async function bump(env: Env, key: string): Promise<void> {
+  // KV has no atomic increment; a lost update under concurrency is acceptable for a rough counter.
+  const cur = parseInt((await env.FLY.get(key)) || "0", 10) || 0;
+  await env.FLY.put(key, String(cur + 1));
+}
+
+async function markActive(env: Env, code: string, now: number): Promise<void> {
+  const day = new Date(now * 1000).toISOString().slice(0, 10);
+  const key = `act:${day}:${code}`;
+  if ((await env.FLY.get(key)) === null) await env.FLY.put(key, "1", { expirationTtl: 3 * 86400 });
+}
+
+async function handleStats(env: Env, req: Request, now: number): Promise<Response> {
+  const key = req.headers.get("x-admin-key") || new URL(req.url).searchParams.get("key") || "";
+  if (!env.ADMIN_KEY || !timingSafeEqualStr(key, env.ADMIN_KEY)) throw new HttpError(401, "unauthorized");
+  const registrations = parseInt((await env.FLY.get("stats:registrations")) || "0", 10) || 0;
+  const days: Record<string, number> = {};
+  for (let d = 0; d < 3; d++) {
+    const day = new Date((now - d * 86400) * 1000).toISOString().slice(0, 10);
+    let n = 0, cursor: string | undefined;
+    do {
+      const page = await env.FLY.list({ prefix: `act:${day}:`, cursor, limit: 1000 });
+      n += page.keys.length; cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+    days[day] = n;
+  }
+  let users = 0, cursor: string | undefined;
+  do {
+    const page = await env.FLY.list({ prefix: "user:", cursor, limit: 1000 });
+    users += page.keys.length; cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+  return json({ registrations, currentUsers: users, activeByDay: days });
+}
+
 async function handleHeartbeat(env: Env, req: Request, user: User, now: number): Promise<Response> {
+  await markActive(env, user.code, now);
   const body = await readBody(req, [...PROFILE_FIELDS, "mood", "cardsPerMin", "sessionCards", "sessionAgain", "race"]);
   const patch = parseProfile(body);
   const mood = body.mood === undefined ? "idle" : oneOf(body.mood, MOODS, "mood");
@@ -566,6 +603,8 @@ async function route(req: Request, env: Env): Promise<Response> {
     await limitByToken(env, req, now);
     return await handleRegister(env, req, now);
   }
+
+  if (path === "/v1/stats" && method === "GET") return await handleStats(env, req, now);
 
   if (!path.startsWith("/v1/")) throw new HttpError(404, "not found");
 
