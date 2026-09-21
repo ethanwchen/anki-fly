@@ -19,6 +19,10 @@ export const UNLOCKS = [
   { id: 'antlers', months: [12], req: 'December' }, { id: 'elf', months: [12], req: 'December' }, { id: 'snowman', months: [12, 1, 2], req: 'winter' },
   { id: 'leprechaun', months: [3], req: 'March' }, { id: 'hearts', months: [2], req: 'February' },
   { id: 'birthday', days: 365, req: '365 study days' },
+  // medical / language track
+  { id: 'mask', req: '' }, { id: 'dictionary', req: '' },
+  { id: 'stethoscope', cards: 600, req: '600 cards' }, { id: 'headset', cards: 800, req: '800 cards' }, { id: 'goggles', cards: 1000, req: '1,000 cards' },
+  { id: 'scrubcap', days: 21, req: '21 study days' }, { id: 'nursecap', days: 45, req: '45 study days' }, { id: 'headmirror', exam: 0.95, req: 'an exam at 95%' },
 ];
 
 export function unlocked(id, st) {

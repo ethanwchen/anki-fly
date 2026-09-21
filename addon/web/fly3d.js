@@ -9,6 +9,7 @@
 // no IK reach solving, no overlay sprites, pixel ratio capped at 1.5; all states/costumes/species still work.
 // { lite: true, board: false } gives a lite fly with no desk at all (transparent floor).
 // Face icons: await FlySprite.icon({ costume, species, size }) -> PNG data URL of the fly's head (transparent background).
+// Team tag: setTag('BCM') / getTag(): a small label floating above the thorax that follows the fly; setTag(null) removes it.
 //
 // Geometry: anatomically detailed Drosophila body from TuragaLab/flybody (Apache-2.0),
 // decimated and baked into vendor/fly.bin (see vendor/LICENSE-flybody.txt). The MuJoCo
@@ -423,6 +424,67 @@ Object.assign(COSTUME_MAKERS, {
     const g = new THREE.Group(); g.add(base, top2, candle, flame); g.position.copy(top); G.add(g);
   },
 });
+// medical + language-learner
+Object.assign(COSTUME_MAKERS, {
+  stethoscope(G, W, top, H, std) {
+    const tube = std(0x2b2b30, { roughness: 0.6 }), steel = std(0xb8bcc4, { metalness: 0.85, roughness: 0.3 });
+    const neck = new THREE.Vector3(0, -W * 0.3, -W * 0.15);
+    const loop = new THREE.Mesh(new THREE.TorusGeometry(W * 0.4, W * 0.025, 6, 32, Math.PI * 1.4), tube); loop.position.copy(neck); loop.rotation.x = 0.35; loop.rotation.z = Math.PI * 0.8; G.add(loop);
+    for (const sgn of [-1, 1]) { const ear = new THREE.Mesh(new THREE.SphereGeometry(W * 0.045, 8, 6), steel); ear.position.set(sgn * W * 0.42, -W * 0.05, W * 0.02); G.add(ear); }
+    const hang = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.02, W * 0.02, W * 0.32, 6), tube); hang.position.set(W * 0.3, W * 0.12, -W * 0.36); hang.rotation.x = 0.35; hang.rotation.z = 0.3; G.add(hang);
+    const chest = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.12, W * 0.12, W * 0.05, 20), steel); chest.position.set(W * 0.36, W * 0.22, -W * 0.5); chest.rotation.x = Math.PI / 2 - 0.5; G.add(chest);
+  },
+  scrubcap(G, W, top, H, std) {
+    const teal = std(0x2a9d8f, { roughness: 0.9 });
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(W * 0.56, 20, 14, 0, TAU, 0, Math.PI * 0.5), teal); cap.rotation.x = Math.PI / 2; cap.scale.set(1, 1.05, 0.7);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(W * 0.55, W * 0.04, 6, 28), std(0x1f7a70, { roughness: 0.9 })); band.position.z = W * 0.02;
+    const tie = new THREE.Mesh(new THREE.BoxGeometry(W * 0.08, W * 0.35, W * 0.03), teal); tie.position.set(0, -W * 0.65, -W * 0.05); tie.rotation.x = 0.4;
+    const hat = new THREE.Group(); hat.add(cap, band, tie); hat.position.copy(top); hat.position.z -= W * 0.04; G.add(hat);
+  },
+  headmirror(G, W, top, H, std) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(W * 0.52, W * 0.035, 6, 32), std(0x2b2b30)); band.position.copy(top); band.position.z -= W * 0.15; band.rotation.x = 0.2; G.add(band);
+    const mirror = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.16, W * 0.16, W * 0.03, 24), std(0xe6eef5, { metalness: 0.95, roughness: 0.08 })); mirror.position.set(0, top.y + W * 0.5, top.z + W * 0.02); mirror.rotation.x = Math.PI / 2 + 0.35; G.add(mirror);
+    const hole = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.03, W * 0.03, W * 0.035, 12), std(0x111)); hole.position.copy(mirror.position); hole.rotation.copy(mirror.rotation); G.add(hole);
+  },
+  goggles(G, W, top, H, std) {
+    const lensMat = new THREE.MeshPhysicalMaterial({ color: 0xcfe8ff, roughness: 0.05, transparent: true, opacity: 0.45, clearcoat: 1 });
+    const frame = std(0xe0e0e0, { roughness: 0.4 }), E = H.eyes, r = W * 0.3;
+    for (const c of E) {
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), lensMat); lens.position.copy(c); lens.position.y += r * 0.5; lens.scale.set(1, 0.5, 0.95); G.add(lens);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.96, r * 0.1, 6, 24), frame); rim.position.copy(lens.position); rim.rotation.x = Math.PI / 2; G.add(rim);
+    }
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(W * 0.52, W * 0.03, 4, 32), std(0x222)); strap.position.set(0, 0, E[0].z + r * 0.2); strap.rotation.x = 0.3; G.add(strap);
+  },
+  nursecap(G, W, top, H, std) {
+    const white = std(0xfbfbfb, { roughness: 0.95 });
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(W * 0.75, W * 0.4, W * 0.35), white); cap.position.z = W * 0.17;
+    const cross1 = new THREE.Mesh(new THREE.BoxGeometry(W * 0.2, W * 0.02, W * 0.06), std(0xd9232e)); cross1.position.set(0, W * 0.21, W * 0.2);
+    const cross2 = new THREE.Mesh(new THREE.BoxGeometry(W * 0.06, W * 0.02, W * 0.2), std(0xd9232e)); cross2.position.copy(cross1.position);
+    const hat = new THREE.Group(); hat.add(cap, cross1, cross2); hat.position.copy(top); hat.rotation.x = 0.15; G.add(hat);
+  },
+  mask(G, W, top, H, std) {
+    const cloth = std(0x9fd8e8, { roughness: 0.95, side: THREE.DoubleSide });
+    const m = new THREE.Mesh(new THREE.SphereGeometry(W * 0.42, 20, 12, 0, TAU, Math.PI * 0.45, Math.PI * 0.45), cloth); m.rotation.x = -Math.PI / 2 + 0.3; m.position.set(0, H.fwdMax * 0.55, -W * 0.3); m.scale.set(1, 1, 0.7); G.add(m);
+    for (const sgn of [-1, 1]) { const strap = new THREE.Mesh(new THREE.TorusGeometry(W * 0.2, W * 0.012, 4, 20), std(0xeeeeee)); strap.position.set(sgn * W * 0.42, -W * 0.05, -W * 0.15); strap.rotation.y = Math.PI / 2; G.add(strap); }
+  },
+  headset(G, W, top, H, std) {
+    const dark = std(0x23262e, { roughness: 0.5 });
+    const band = new THREE.Mesh(new THREE.TorusGeometry(W * 0.55, W * 0.04, 8, 32, Math.PI), dark); band.position.copy(top); band.position.z -= W * 0.1; G.add(band);
+    for (const sgn of [-1, 1]) { const cup = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.17, W * 0.17, W * 0.12, 20), dark); cup.rotation.z = Math.PI / 2; cup.position.set(sgn * W * 0.58, -W * 0.02, top.z - W * 0.35); G.add(cup); }
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.02, W * 0.02, W * 0.55, 6), dark); arm.position.set(W * 0.5, W * 0.25, top.z - W * 0.55); arm.rotation.z = 0.9; arm.rotation.x = 0.4; G.add(arm);
+    const mic = new THREE.Mesh(new THREE.SphereGeometry(W * 0.06, 10, 8), std(0x444)); mic.position.set(W * 0.28, W * 0.5, top.z - W * 0.72); G.add(mic);
+  },
+  dictionary(G, W, top, H, std) {
+    const cover = std(0x1d4ed8, { roughness: 0.6 }), pages = std(0xfaf6ea, { roughness: 1 });
+    const book = new THREE.Group();
+    for (const sgn of [-1, 1]) {
+      const half = new THREE.Mesh(new THREE.BoxGeometry(W * 0.4, W * 0.5, W * 0.04), cover); half.position.set(sgn * W * 0.2, 0, 0); half.rotation.y = sgn * 0.35; book.add(half);
+      const pg = new THREE.Mesh(new THREE.BoxGeometry(W * 0.36, W * 0.46, W * 0.03), pages); pg.position.set(sgn * W * 0.2, 0, W * 0.03); pg.rotation.y = sgn * 0.35; book.add(pg);
+    }
+    const bookmark = new THREE.Mesh(new THREE.BoxGeometry(W * 0.04, W * 0.6, W * 0.01), std(0xd9232e)); bookmark.position.set(0, -W * 0.05, W * 0.05); book.add(bookmark);
+    book.position.copy(top); book.position.z += W * 0.04; book.rotation.x = 0.1; G.add(book);
+  },
+});
 const COSTUMES = ['none', ...Object.keys(COSTUME_MAKERS)];
 
 // ---------- binary loader ----------
@@ -615,6 +677,26 @@ export class FlySprite {
     this.needsRender = true;
   }
   getCostume() { return this.costume || 'none'; }
+
+  // Team tag: a small rounded label (e.g. 'BCM') that floats beside the thorax and follows the fly.
+  setTag(text) {
+    this.tagText = text ? String(text).slice(0, 6) : null;
+    if (!this.ready) return;
+    if (this.tagSprite) { this.tagSprite.parent.remove(this.tagSprite); this.tagSprite.material.map.dispose(); this.tagSprite.material.dispose(); this.tagSprite = null; }
+    if (!this.tagText) { this.needsRender = true; return; }
+    const c = document.createElement('canvas'); c.width = 128; c.height = 48; const g = c.getContext('2d');
+    g.fillStyle = 'rgba(20,22,30,0.9)'; g.beginPath(); g.roundRect(2, 2, 124, 44, 14); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 2; g.stroke();
+    g.fillStyle = '#ffffff'; g.font = 'bold 24px ui-sans-serif, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(this.tagText, 64, 25);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+    sp.renderOrder = 11;
+    const h = this.bodyH / this.root.scale.x;   // in MuJoCo units (thorax frame)
+    sp.position.set(0, 0, h * 0.75); sp.scale.set(h * 0.5, h * 0.19, 1);   // above the thorax, screen-facing
+    this.byName.thorax.add(sp); this.tagSprite = sp;
+    this.needsRender = true;
+  }
+  getTag() { return this.tagText || null; }
 
   // Aim the camera at the face (front, slightly above) so the head fills the frame; used for icons.
   frameHead(fill = 0.78) {
@@ -916,6 +998,7 @@ export class FlySprite {
     this.headBasis();
     this.ready = true;
     if (this.costume) this.setCostume(this.costume);
+    if (this.tagText) this.setTag(this.tagText);
     this.layout();
     if (this._readyRes) this._readyRes(this);
   }

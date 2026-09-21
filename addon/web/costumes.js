@@ -13,6 +13,8 @@ const LABELS = {
   graduate: ['🎓', 'Grad cap'], headphones: ['🎧', 'Headphones'], bow: ['🎀', 'Bow'], flowers: ['🌸', 'Flower crown'], cowboy: ['🤠', 'Cowboy hat'],
   beret: ['🎨', 'Beret'], alien: ['👽', 'Alien boppers'], scarf: ['🧣', 'Scarf'], propeller: ['🚁', 'Propeller cap'],
   pumpkin: ['🎃', 'Pumpkin'], witch: ['🧙‍♀️', 'Witch hat'], ghost: ['👻', 'Ghost sheet'], antlers: ['🦌', 'Reindeer'], elf: ['🧝', 'Elf hat'],
+  stethoscope: ['🩺', 'Stethoscope'], scrubcap: ['🧑‍⚕️', 'Scrub cap'], headmirror: ['👨‍⚕️', 'Head mirror'], goggles: ['🥽', 'Lab goggles'],
+  nursecap: ['💉', 'Nurse cap'], mask: ['😷', 'Surgical mask'], headset: ['🎙️', 'Language headset'], dictionary: ['📖', 'Dictionary'],
   snowman: ['⛄', 'Snowman'], leprechaun: ['🍀', 'Leprechaun'], hearts: ['💕', 'Heart boppers'], birthday: ['🎂', 'Birthday cake'],
 };
 

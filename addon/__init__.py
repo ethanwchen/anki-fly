@@ -164,6 +164,7 @@ class FlyWidget(QObject):
             "focus": self.focus,
             "pacing": bool(self.cfg.get("pacing_nudges", True)),
             "name": str(self.cfg.get("fly_name", "") or ""),
+            "team": str(self.cfg.get("fly_team", "") or ""),
             "sex": sex(),
             "width": int(self.cfg.get("width", 400)),
         }})
@@ -232,6 +233,18 @@ class FlyWidget(QObject):
             return
         cfg = get_config()
         cfg["fly_name"] = name.strip()[:24]
+        write_config(cfg)
+        self.apply_config()
+
+    @safe
+    def set_team(self) -> None:
+        from aqt.utils import getText
+        current = get_config().get("fly_team", "") or ""
+        team, ok = getText("Team tag (up to 6 letters/numbers, e.g. BCM). Leave empty for none:", default=current, title="Drosophil-Anki")
+        if not ok:
+            return
+        cfg = get_config()
+        cfg["fly_team"] = "".join(ch for ch in team.upper() if ch.isalnum())[:6]
         write_config(cfg)
         self.apply_config()
 
@@ -327,6 +340,9 @@ class FlyWidget(QObject):
             fr = getattr(mw, "_anki_fly_friends", None)
             if fr:
                 fr.set_mood(cmd[len("fly:mood:"):][:20])
+            return {"ok": True}
+        if cmd == "fly:team":
+            self.set_team()
             return {"ok": True}
         if cmd == "fly:rename":
             self.rename()

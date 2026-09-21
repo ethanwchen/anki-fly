@@ -41,7 +41,11 @@ The fly sits an exam on your deck:
   its own memory file).
 - **Fly race** (optional, front page only): a weekly leaderboard under the deck list, cards reviewed
   this week per person with each fly's face (and costume) next to the name, a green dot for who's
-  studying right now. Friends by fly code; no ratings or cards are ever shared. Needs a
+  studying right now. Click a fly for its profile (level, weekly cards, race wins, team tag); your own
+  profile has checkboxes for what friends may see. Friends by fly code; no ratings or cards are shared.
+- **Levels and XP** for the fly (10 XP a review, bonuses for new study days and for finally getting a
+  card it was still learning), a **team tag** floating over the fly (e.g. BCM), and race wins counted
+  each week you finish first among your friends. Needs a
   friends server (`backend/`, a small Cloudflare Worker you deploy; set `friends_server` in the
   config). Only name, species, costume, mood and aggregate counts are shared, never cards or decks.
 - **Minimize / hide.** Hover the widget for `–` (collapse to a tiny fly) and `×` (hide for this

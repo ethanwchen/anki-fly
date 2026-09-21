@@ -69,7 +69,7 @@ class AnkiFly {
     this.state = 'idle';
     this.forcedState = null; // {state, until}
     this.stats = { spikes: 0, reviews: 0 };
-    this.progress = { cards: 0, days: [], bestExam: 0, crashouts: 0, costume: 'none' };   // unlock progress, persisted
+    this.progress = { cards: 0, days: [], bestExam: 0, crashouts: 0, costume: 'none', xp: 0 };   // unlock progress, persisted
     this.memory = {};   // nid -> {approach, avoid, seen}
     this.dirty = false;
     this.session = { cards: 0, again: 0, synapses: 0, start: performance.now() };
@@ -129,6 +129,7 @@ class AnkiFly {
     item('m-close', () => py('fly:close'));
     $('leech').onclick = (e) => { e.stopPropagation(); py('fly:leeches:' + this.leeches().join(',')); };
     item('m-rename', () => py('fly:rename'));
+    item('m-team', () => py('fly:team'));
     item('m-sex', () => py('fly:sex:toggle'));
     item('m-wardrobe', () => py('fly:wardrobe:' + JSON.stringify({ costume: this.progress.costume, stats: this.progressStats() })));
     // resize grip: the widget grows toward the top-left; Python keeps the 2:1 ratio and repositions
@@ -212,6 +213,7 @@ class AnkiFly {
         document.body.classList.toggle('mini', !!this.cfg.minimized);
         document.body.classList.toggle('focus', !!this.cfg.focus);
         this.name = (this.cfg.name || '').trim();
+        if (this.sprite.setTag) this.sprite.setTag(this.cfg.team || null);
         $('m-sex').firstElementChild.textContent = this.sex === 'female' ? 'Switch to male fly (MaleCNS brain)' : 'Switch to female fly (FlyWire brain)';
         $('fly').title = this.name ? `${this.name}, your study fly` : 'Your study fly';
         $('focus-on').textContent = this.cfg.focus ? '● on' : '';
@@ -256,6 +258,8 @@ class AnkiFly {
         if (ease >= 3) this.sulkUntil = 0;
         this.force(['pressAgain', 'pressHard', 'pressGood', 'pressEasy'][Math.min(4, Math.max(1, ease)) - 1], 750);
         if (ease >= 3) {
+          const mem = this.currentNid && this.memory[this.currentNid];
+          if (mem && this.pref(mem) < -0.3) this.addXp(15);
           sim.stimulate(g.PAM, 60, 400);
           const changed = sim.dopamine(1, ease === 4 ? 1.3 : 1.0);
           this.session.synapses += changed;
@@ -436,6 +440,7 @@ class AnkiFly {
   updateSession() {
     const s = this.session, k = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
     $('session').textContent = s.cards ? `${s.cards} cards · ${s.again} stung · ${k(s.synapses)} synapses rewired` : `${Object.keys(this.memory).length} cards remembered`;
+    this.updateLevel();
   }
 
   setStatus(s, hover = false, detail = '') {
@@ -459,13 +464,31 @@ class AnkiFly {
   }
 
   // ---------- progress & costumes ----------
+  // XP: 10 per review, +15 when a card the fly was still learning gets a Good/Easy, +50 for each new study day.
+  // Level grows with the square root of XP, so early levels come fast and later ones take real work.
+  level() { return Math.floor(Math.sqrt((this.progress.xp || 0) / 100)) + 1; }
+  xpToNext() { const l = this.level(); return l * l * 100 - (this.progress.xp || 0); }
+  addXp(n, why) {
+    const before = this.level();
+    this.progress.xp = (this.progress.xp || 0) + n; this.dirty = true;
+    if (this.level() > before) { this.say(`level ${this.level()}!`, 5000); this.force('dance', 2000); }
+    this.updateLevel();
+  }
+  updateLevel() {
+    const el = $('level'); if (!el) return;
+    el.textContent = `Lv ${this.level()}`;
+    el.title = `${(this.progress.xp || 0).toLocaleString()} XP · ${this.xpToNext().toLocaleString()} to the next level`;
+  }
+
   progressStats() { return { cards: this.progress.cards, days: this.progress.days.length, bestExam: this.progress.bestExam, crashouts: this.progress.crashouts || 0 }; }
 
   bump() {
     const p = this.progress;
     p.cards++;
     const today = new Date().toISOString().slice(0, 10);
-    if (!p.days.includes(today)) { p.days.push(today); if (p.days.length > 4000) p.days.shift(); }
+    let xp = 10;
+    if (!p.days.includes(today)) { p.days.push(today); if (p.days.length > 4000) p.days.shift(); xp += 50; }
+    this.addXp(xp);
     this.dirty = true;
     const before = this.unlocked; this.unlocked = UNLOCKS.filter(c => unlocked(c.id, this.progressStats())).map(c => c.id);
     const fresh = before ? this.unlocked.filter(id => !before.includes(id)) : [];
@@ -567,6 +590,8 @@ class AnkiFly {
     this.stats = data.stats || this.stats;
     this.streak = data.streak || 0;
     if (data.progress) this.progress = { ...this.progress, ...data.progress, days: data.progress.days || [] };
+    if (!this.progress.xp) this.progress.xp = this.progress.cards * 10 + this.progress.days.length * 50;   // backfill for existing flies
+    this.updateLevel();
     this.unlocked = UNLOCKS.filter(c => unlocked(c.id, this.progressStats())).map(c => c.id);
     this.setCostume(this.progress.costume || 'none');
     this.setStatus(`${this.name || 'the fly'} remembers ${Object.keys(this.memory).length} of your cards`);

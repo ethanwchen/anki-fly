@@ -7,12 +7,14 @@ weekly fly race. It is designed to know as little as possible.
 
 Per user, identified only by a random secret token and a public 8-character fly code:
 
-- the fly's name (up to 24 characters), species and costume;
+- the fly's name (up to 24 characters), species, costume, an optional short team tag, the fly's level, XP,
+  race wins, and when the code was created;
 - presence: whether you are online, the time of the last heartbeat, and the fly's current mood
   (for example `study`, `celebrate`, `sulk`, `offline`);
 - aggregate study counts for the current session (cards per minute, cards answered, "again" presses);
 - weekly race stats: days studied, reviews, and true retention (a percentage or nothing);
-- the list of fly codes you are friends with.
+- the list of fly codes you are friends with;
+- your `hide` choices (see below).
 
 Nothing else. Card content, deck names, note text, email addresses, real names, Anki profile names and IP
 addresses are never accepted or stored. Requests carrying unexpected fields are rejected. (Cloudflare, which
@@ -22,7 +24,13 @@ to rate-limit unauthenticated registration and does not write it to storage.)
 ## Who can see it
 
 Only people who have your fly code and whom you have added as a friend (friendship is mutual) see your name,
-species, costume, mood, cards per minute and race stats. There is no directory or search.
+species, costume, team, level, XP, race wins, mood, cards per minute and race stats. There is no directory or
+search.
+
+You can hide parts of this from friends with the add-on's privacy switches (the `hide` list): hiding
+**level** withholds level and XP, **team** withholds the team tag, **days** and **weekly** withhold your
+days-studied and weekly review counts from the race table, and **online** makes you always appear offline
+(no mood, no cards per minute, no last-seen time). You always see your own complete profile.
 
 ## How to delete
 

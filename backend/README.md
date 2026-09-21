@@ -60,18 +60,35 @@ accepted).
 
 | Method | Path | Body | Reply |
 | --- | --- | --- | --- |
-| POST | `/v1/register` | `{ name?, species?, costume? }` | `201 { token, code }`. With a valid Bearer token it is idempotent: `200` with the existing code, profile updated. |
-| POST | `/v1/heartbeat` | `{ name, species, costume, mood, cardsPerMin, sessionCards, sessionAgain, race: { days, reviews, trueRetention } }` | `{ ok, friends: [ { code, name, species, costume, online, mood, cardsPerMin, lastSeen } ] }`. `mood: "offline"` marks you offline at once. |
+| POST | `/v1/register` | `{ name?, species?, costume?, team?, level?, xp?, raceWins?, hide? }` | `201 { token, code }`. With a valid Bearer token it is idempotent: `200` with the existing code, profile updated. |
+| POST | `/v1/heartbeat` | profile fields (as register) + `mood, cardsPerMin, sessionCards, sessionAgain, race: { days, reviews, trueRetention }` | `{ ok, friends: [ FriendRow ] }`. `mood: "offline"` marks you offline at once. |
 | GET | `/v1/friends` | | Same friend list as heartbeat. |
+| GET | `/v1/profile/:code` | | `{ ok, profile: FriendRow }` for a friend (or yourself); `404` if not a friend or unknown. |
 | POST | `/v1/friends` | `{ code }` | `{ ok, friend: { code, name, species, costume } }`; `404` unknown code; `409` when either side already has 50 friends. Friendship is symmetric. |
 | DELETE | `/v1/friends/:code` | | `{ ok }`; removes both directions. |
-| GET | `/v1/race?week=2026-W39` | | `{ week, standings: [ { code, name, species, costume, days, reviews, trueRetention } ] }` for you and your friends, sorted by days, then trueRetention, then reviews (all descending). `week` defaults to the current ISO week (UTC, Monday start). |
-| POST | `/v1/rename` | `{ name }` | `{ ok, name }` |
+| GET | `/v1/race?week=2026-W39` | | `{ week, standings: [ { code, name, species, costume, team, level, xp, raceWins, joinedAt, days, reviews, trueRetention } ] }` for you and your friends, sorted by days, then trueRetention, then reviews (all descending). `week` defaults to the current ISO week (UTC, Monday start). |
+| POST | `/v1/rename` | `{ name, ...other profile fields }` | `{ ok, name }` |
 | DELETE | `/v1/me` | | `{ ok }`; deletes the user, presence, race rows and removes them from every friend list. |
 
+`FriendRow` is `{ code, name, species, costume, team, level, xp, raceWins, joinedAt, online, mood, cardsPerMin,
+lastSeen }` (`joinedAt` and `lastSeen` are unix seconds).
+
+Profile fields: `team` (up to 6 characters, A-Z and digits, uppercased, or empty), `level` (integer 1-999),
+`xp` (integer 0-10,000,000), `raceWins` (integer 0-100,000), `hide` (array of up to 5 of
+`level, weekly, days, team, online`). `hide` controls what *other* people see of you; you always see your own
+full row:
+
+| hidden | effect on your row as others see it |
+| --- | --- |
+| `level` | `level` and `xp` are `null` |
+| `team` | `team` is `null` |
+| `days` | race `days` is `null` |
+| `weekly` | race `reviews` is `null` |
+| `online` | `online` false, `mood` `"offline"`, `cardsPerMin` 0, `lastSeen` 0 |
+
 Validation: `name` at most 24 characters after stripping control characters; `species` one of
-`wild, white, ebony, yellow, female`; `costume` one of `none` plus the 23 wardrobe names in
-`addon/web/costumes.js`; `mood` one of `study, pressAgain, pressHard, pressGood, pressEasy, celebrate, dance,
+`wild, white, ebony, yellow, female`; `costume` one of the wardrobe names in `addon/web/costumes.js`
+(`LABELS` keys, `none` included); `mood` one of `study, pressAgain, pressHard, pressGood, pressEasy, celebrate, dance,
 zoomies, crashout, sulk, sleepDesk, still, idle, offline`; numbers must be finite and within sane bounds
 (`cardsPerMin` 0-1000, counts non-negative integers, `trueRetention` 0-100 or null).
 
@@ -82,7 +99,7 @@ Presence: `online` is true only when the last heartbeat was within 120 s and was
 
 ```
 tok:<sha256(token)>    -> code            token index; the token itself is compared in constant time
-user:<code>            -> { token, code, name, species, costume, createdAt }
+user:<code>            -> { token, code, name, species, costume, createdAt, team, level, xp, raceWins, hide }
 pres:<code>            -> { code, online, lastSeen, mood, cardsPerMin, sessionCards, sessionAgain }
 friends:<code>         -> [code, ...]     kept symmetric
 race:<code>:<weekKey>  -> { days, reviews, trueRetention, updatedAt }

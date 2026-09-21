@@ -30,6 +30,7 @@
   #foot { display: flex; align-items: end; justify-content: space-between; gap: 1.5rem; color: var(--ink3); font-size: 2.4rem; min-width: 0; padding-bottom: .5rem; line-height: 1.2; }
   #session { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #hz { white-space: nowrap; }
+  #level { color: var(--accent); font-weight: 600; white-space: nowrap; font-size: 2.2rem; }
   #leech { background: rgba(242,193,78,0.14); color: var(--warn); border: 0; border-radius: 1.25rem; padding: .25rem 1.5rem; font: inherit; font-size: 2.4rem; cursor: pointer; white-space: nowrap; }
   #leech:hover { background: rgba(242,193,78,0.28); }
 
@@ -75,13 +76,14 @@
     <div id="legend"><span style="--c:#50dcff">ACh</span><span style="--c:#ff6ebe">GABA</span><span style="--c:#ffbe46">Glu</span><span style="--c:#78ff8c">dopamine</span></div>
     <div id="status">waking up…</div>
     <div id="memrow"><div id="memory"><div id="membar" class="neutral"></div></div><div id="memlabel">fly memory</div></div>
-    <div id="foot"><div id="session"></div><button id="leech" hidden></button><div id="hz"></div></div>
+    <div id="foot"><span id="level" title="XP">Lv 1</span><div id="session"></div><button id="leech" hidden></button><div id="hz"></div></div>
   </div>
   <div id="grip" title="Drag to resize"></div>
   <button id="gear" title="Fly options" aria-label="Fly options" aria-haspopup="menu">⚙</button>
   <div id="menu" role="menu">
     <button id="m-focus" role="menuitem"><span>Deep Focus <span class="on" id="focus-on"></span></span><kbd>⌃⇧D</kbd></button>
     <button id="m-rename" role="menuitem"><span>Name the fly…</span></button>
+    <button id="m-team" role="menuitem"><span>Team tag…</span></button>
     <button id="m-wardrobe" role="menuitem"><span>Wardrobe…</span></button>
     <button id="m-sex" role="menuitem"><span>Switch to female fly (FlyWire brain)</span></button>
     <button id="m-exam" role="menuitem"><span>Fly Exam…</span><kbd>⌃⇧E</kbd></button>

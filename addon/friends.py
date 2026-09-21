@@ -22,9 +22,9 @@ HEARTBEAT_S = 30
 MOODS = {"study", "pressAgain", "pressHard", "pressGood", "pressEasy", "celebrate", "dance", "zoomies",
          "crashout", "sulk", "sleepDesk", "still", "idle", "offline"}
 MOCK_FRIENDS = [
-    {"code": "K7Q2M9ZX", "name": "Gerald", "species": "wild", "costume": "sunglasses", "online": True, "mood": "study", "cardsPerMin": 4.2, "lastSeen": 0},
-    {"code": "P3XW8AQ4", "name": "Pip", "species": "female", "costume": "partyhat", "online": True, "mood": "dance", "cardsPerMin": 6.1, "lastSeen": 0},
-    {"code": "B9NR4TLC", "name": "Drosophilbert", "species": "wild", "costume": "none", "online": False, "mood": "offline", "cardsPerMin": 0, "lastSeen": 3600 * 5},
+    {"code": "K7Q2M9ZX", "name": "Gerald", "species": "wild", "costume": "sunglasses", "online": True, "mood": "study", "cardsPerMin": 4.2, "lastSeen": 0, "team": "BCM", "level": 14, "xp": 17200, "raceWins": 3, "joinedAt": 1780000000},
+    {"code": "P3XW8AQ4", "name": "Pip", "species": "female", "costume": "partyhat", "online": True, "mood": "dance", "cardsPerMin": 6.1, "lastSeen": 0, "team": "UCLA", "level": 22, "xp": 45000, "raceWins": 7, "joinedAt": 1775000000},
+    {"code": "B9NR4TLC", "name": "Drosophilbert", "species": "wild", "costume": "none", "online": False, "mood": "offline", "cardsPerMin": 0, "lastSeen": 3600 * 5, "team": "", "level": 3, "xp": 500, "raceWins": 0, "joinedAt": 1788000000},
 ]
 
 
@@ -57,10 +57,16 @@ class Friends:
         cfg = get_config()
         st = read_state()
         prog = st.get("progress") or {}
+        xp = int(prog.get("xp") or 0)
         return {
             "name": (cfg.get("fly_name") or "my fly")[:24],
             "species": "female" if cfg.get("fly_sex") == "female" else "wild",
             "costume": prog.get("costume") or "none",
+            "team": "".join(ch for ch in str(cfg.get("fly_team") or "").upper() if ch.isalnum())[:6],
+            "level": int(xp ** 0.5 / 10) + 1,
+            "xp": xp,
+            "raceWins": int(st.get("race_wins") or 0),
+            "hide": [h for h in (st.get("hide") or []) if h in ("level", "weekly", "days", "team", "online")],
         }
 
     # ---- network (runs in a worker thread; results applied on the main thread)
@@ -95,7 +101,7 @@ class Friends:
             return
         if self.mock():
             if not self.identity()["code"]:
-                write_state(friends_code="MOCK1234", friends_token="mock")
+                write_state(friends_code="MOCK1234", friends_token="mock", friends_joined=int(time.time()))
             if then:
                 then()
             return
@@ -107,7 +113,7 @@ class Friends:
             return self._call("POST", "/v1/register", self.profile(), auth=False)
         def done(res):
             if res and res.get("token") and res.get("code"):
-                write_state(friends_token=res["token"], friends_code=res["code"])
+                write_state(friends_token=res["token"], friends_code=res["code"], friends_joined=int(time.time()))
                 if then:
                     then()
         self._bg(reg, done)
@@ -172,6 +178,20 @@ class Friends:
         for f in self.friends:
             r = by_code.get(f.get("code")) or {}
             f["weekReviews"], f["weekDays"] = int(r.get("reviews") or 0), int(r.get("days") or 0)
+        self._settle_week(res.get("week"))
+
+    def _settle_week(self, week: str | None) -> None:
+        """When a new week starts, award a race win if we topped last week's cached standings."""
+        st = read_state()
+        last = st.get("race_last") or {}
+        me = self.identity()["code"]
+        if week and last.get("week") and last["week"] != week and len(last.get("rows") or []) > 1:
+            rows = sorted(last["rows"], key=lambda r: -(r.get("reviews") or 0))
+            if rows and rows[0].get("code") == me and (rows[0].get("reviews") or 0) > 0:
+                write_state(race_wins=int(st.get("race_wins") or 0) + 1)
+                tooltip("Your fly won last week's race!", period=3000)
+        rows = [{"code": me, "reviews": self.week_stats()["reviews"]}] + [{"code": f.get("code"), "reviews": f.get("weekReviews") or 0} for f in self.friends]
+        write_state(race_last={"week": week, "rows": rows})
 
     # ---- friend management (menu)
     def show_code(self) -> None:
@@ -226,16 +246,21 @@ class Friends:
             return ""
         return (f'<div style="margin:18px auto 0;max-width:720px">'
                 f'<iframe id="flyfriends" src="/_addons/{PKG}/web/friends.html" '
-                f'style="width:100%;height:{60 + 52 * (1 + len(self.friends))}px;border:0;border-radius:12px;background:transparent" '
+                f'style="width:100%;height:{60 + 52 * (1 + len(self.friends)) + 190}px;border:0;border-radius:12px;background:transparent" '
                 f'title="Fly friends"></iframe></div>')
+
+    def set_hidden(self, fields: list) -> None:
+        write_state(hide=[h for h in fields if h in ("level", "weekly", "days", "team", "online")][:5])
+        self.heartbeat()
 
     def snapshot(self) -> dict:
         me = self.profile()
         me["code"] = self.identity()["code"] or ""
         ws = self.week_stats()
         me["weekReviews"], me["weekDays"], me["online"] = ws["reviews"], ws["days"], True
+        me["joinedAt"] = read_state().get("friends_joined") or 0
         # friends: presence and weekly totals only; their moods/answers stay private
-        friends = [{k: f.get(k) for k in ("code", "name", "species", "costume", "online", "lastSeen", "weekReviews", "weekDays")} for f in self.friends]
+        friends = [{k: f.get(k) for k in ("code", "name", "species", "costume", "online", "lastSeen", "weekReviews", "weekDays", "team", "level", "xp", "raceWins", "joinedAt")} for f in self.friends]
         return {"me": me, "friends": friends, "week": self.week_key(), "error": self.last_error, "mock": self.mock(), "now": time.time()}
 
 
@@ -259,6 +284,9 @@ def setup() -> None:
                 return (True, fr.snapshot())
             if cmd == "add":
                 fr.add_friend()
+            elif cmd.startswith("hide:"):
+                fr.set_hidden([h for h in cmd[5:].split(",") if h])
+                return (True, fr.snapshot())
             elif cmd == "code":
                 fr.show_code()
         except Exception:

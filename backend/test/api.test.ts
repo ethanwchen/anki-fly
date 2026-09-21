@@ -97,7 +97,9 @@ describe("heartbeat + friends + presence", () => {
     expect(bobList.body.friends).toHaveLength(1);
     const aliceRow = bobList.body.friends[0];
     expect(aliceRow).toMatchObject({ code: a.code, name: "my fly", species: "female", costume: "sunglasses", online: true, mood: "study", cardsPerMin: 4.2 });
-    expect(Object.keys(aliceRow).sort()).toEqual(["cardsPerMin", "code", "costume", "lastSeen", "mood", "name", "online", "species"]);
+    expect(Object.keys(aliceRow).sort()).toEqual(["cardsPerMin", "code", "costume", "joinedAt", "lastSeen", "level", "mood", "name", "online", "raceWins", "species", "team", "xp"]);
+    expect(aliceRow).toMatchObject({ team: "", level: 1, xp: 0, raceWins: 0 });
+    expect(Math.abs(aliceRow.joinedAt - Date.now() / 1000)).toBeLessThan(5);
     expect(typeof aliceRow.lastSeen).toBe("number");
     expect(Math.abs(aliceRow.lastSeen - Date.now() / 1000)).toBeLessThan(5); // unix seconds
 
@@ -197,7 +199,8 @@ describe("race", () => {
     expect(r.status).toBe(200);
     expect(r.body.week).toBe(week);
     expect(r.body.standings.map((s: { code: string }) => s.code)).toEqual([b.code, a.code, c.code]);
-    expect(r.body.standings[1]).toEqual({ code: a.code, name: "my fly", species: "female", costume: "sunglasses", days: 3, reviews: 100, trueRetention: 0.9 });
+    expect(r.body.standings[1]).toMatchObject({ code: a.code, name: "my fly", species: "female", costume: "sunglasses", days: 3, reviews: 100, trueRetention: 0.9, team: "", level: 1, xp: 0, raceWins: 0 });
+    expect(typeof r.body.standings[1].joinedAt).toBe("number");
 
     // Explicit week query; an empty week gives zero rows; a malformed one is rejected.
     expect((await call("GET", `/v1/race?week=${week}`, undefined, a.token)).body.standings).toHaveLength(3);
@@ -246,5 +249,83 @@ describe("delete me", () => {
     expect((await env.FLY.list({ prefix: `race:${a.code}:` })).keys).toHaveLength(0);
     const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(a.token))), (b) => b.toString(16).padStart(2, "0")).join("");
     expect(await env.FLY.get(`tok:${hash}`)).toBeNull();
+  });
+});
+
+describe("profile fields, hide and GET /v1/profile/:code", () => {
+  it("stores team/level/xp/raceWins/hide via register, heartbeat and rename", async () => {
+    const a = await call("POST", "/v1/register", { name: "Alice", team: " med1 ", level: 7, xp: 1234, raceWins: 2, hide: ["level"] });
+    expect(a.status).toBe(201);
+    const b = await register("Bob");
+    await call("POST", "/v1/friends", { code: b.code }, a.body.token);
+
+    // Own row is always complete.
+    const me = await call("GET", `/v1/profile/${a.body.code}`, undefined, a.body.token);
+    expect(me.status).toBe(200);
+    expect(me.body.profile).toMatchObject({ code: a.body.code, team: "MED1", level: 7, xp: 1234, raceWins: 2 });
+
+    // Bob sees team but not level/xp.
+    let seen = (await call("GET", `/v1/profile/${a.body.code}`, undefined, b.token)).body.profile;
+    expect(seen).toMatchObject({ team: "MED1", level: null, xp: null, raceWins: 2 });
+
+    // heartbeat updates the fields; rename accepts them too.
+    await call("POST", "/v1/heartbeat", heartbeatBody({ level: 8, xp: 2000, hide: ["team"] }), a.body.token);
+    seen = (await call("GET", "/v1/friends", undefined, b.token)).body.friends[0];
+    expect(seen).toMatchObject({ team: null, level: 8, xp: 2000 });
+    expect((await call("POST", "/v1/rename", { name: "Al", raceWins: 3, hide: [] }, a.body.token)).status).toBe(200);
+    seen = (await call("GET", "/v1/friends", undefined, b.token)).body.friends[0];
+    expect(seen).toMatchObject({ name: "Al", team: "MED1", level: 8, xp: 2000, raceWins: 3 });
+  });
+
+  it("validates the profile fields", async () => {
+    const a = await register("Alice");
+    const bad = async (over: Record<string, unknown>) => (await call("POST", "/v1/rename", { name: "x", ...over }, a.token)).status;
+    expect(await bad({ team: "TOOLONG" })).toBe(400);
+    expect(await bad({ team: "a-b" })).toBe(400);
+    expect(await bad({ level: 0 })).toBe(400);
+    expect(await bad({ level: 1000 })).toBe(400);
+    expect(await bad({ level: 1.5 })).toBe(400);
+    expect(await bad({ xp: -1 })).toBe(400);
+    expect(await bad({ xp: 10_000_001 })).toBe(400);
+    expect(await bad({ raceWins: 100_001 })).toBe(400);
+    expect(await bad({ hide: ["secret"] })).toBe(400);
+    expect(await bad({ hide: "level" })).toBe(400);
+    expect(await bad({ hide: ["level", "weekly", "days", "team", "online", "level"] })).toBe(400);
+    expect(await bad({ team: "", hide: ["level", "weekly", "days", "team", "online"] })).toBe(200);
+    expect((await call("POST", "/v1/register", { costume: "stethoscope" })).status).toBe(201);
+    expect((await call("POST", "/v1/register", { costume: "dictionary" })).status).toBe(201);
+    expect((await call("POST", "/v1/register", { costume: "labcoat" })).status).toBe(400);
+  });
+
+  it("hide: online / days / weekly are honoured in friend rows and standings", async () => {
+    const a = await register("Alice");
+    const b = await register("Bob");
+    await call("POST", "/v1/friends", { code: b.code }, a.token);
+    await call("POST", "/v1/heartbeat", heartbeatBody({ mood: "dance", race: { days: 4, reviews: 40, trueRetention: 0.5 } }), b.token);
+
+    let row = (await call("GET", "/v1/friends", undefined, a.token)).body.friends[0];
+    expect(row).toMatchObject({ online: true, mood: "dance", cardsPerMin: 4.2 });
+    expect(row.lastSeen).toBeGreaterThan(0);
+
+    await call("POST", "/v1/heartbeat", heartbeatBody({ mood: "dance", hide: ["online", "days", "weekly"], race: { days: 4, reviews: 40, trueRetention: 0.5 } }), b.token);
+    row = (await call("GET", "/v1/friends", undefined, a.token)).body.friends[0];
+    expect(row).toMatchObject({ online: false, mood: "offline", cardsPerMin: 0, lastSeen: 0 });
+
+    const st = (await call("GET", "/v1/race", undefined, a.token)).body.standings;
+    const bob = st.find((s: { code: string }) => s.code === b.code);
+    expect(bob).toMatchObject({ days: null, reviews: null, trueRetention: 0.5 });
+    // Bob still sees his own full standings row.
+    const own = (await call("GET", "/v1/race", undefined, b.token)).body.standings.find((s: { code: string }) => s.code === b.code);
+    expect(own).toMatchObject({ days: 4, reviews: 40 });
+    // And his own profile row.
+    expect((await call("GET", `/v1/profile/${b.code}`, undefined, b.token)).body.profile).toMatchObject({ online: true, mood: "dance" });
+  });
+
+  it("GET /v1/profile/:code is 404 for strangers and unknown codes", async () => {
+    const a = await register("Alice");
+    const stranger = await register("S");
+    expect((await call("GET", `/v1/profile/${stranger.code}`, undefined, a.token)).status).toBe(404);
+    expect((await call("GET", "/v1/profile/ZZZZZZZZ", undefined, a.token)).status).toBe(404);
+    expect((await call("GET", "/v1/profile/bad", undefined, a.token)).status).toBe(400);
   });
 });

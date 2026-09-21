@@ -26,9 +26,12 @@ export const MOODS = [
 export const COSTUMES = [
   "none", "sunglasses", "monocle", "tophat", "catears", "bunnyears", "partyhat", "crown", "wizard",
   "santa", "pirate", "halo", "devil", "viking", "chef", "graduate", "headphones", "bow", "flowers",
-  "cowboy", "beret", "alien", "scarf", "propeller",
-  "pumpkin", "witch", "ghost", "antlers", "elf", "snowman", "leprechaun", "hearts", "birthday",
+  "cowboy", "beret", "alien", "scarf", "propeller", "pumpkin", "witch", "ghost", "antlers", "elf",
+  "stethoscope", "scrubcap", "headmirror", "goggles", "nursecap", "mask", "headset", "dictionary",
+  "snowman", "leprechaun", "hearts", "birthday",
 ] as const;
+export const HIDE_FIELDS = ["level", "weekly", "days", "team", "online"] as const;
+export const MAX_TEAM = 6;
 
 export const PRESENCE_TTL_S = 120;
 export const RATE_LIMIT_PER_MIN = 60;
@@ -42,6 +45,7 @@ const DEFAULT_NAME = "my fly";
 type Species = (typeof SPECIES)[number];
 type Mood = (typeof MOODS)[number];
 type Costume = (typeof COSTUMES)[number];
+type HideField = (typeof HIDE_FIELDS)[number];
 
 interface User {
   token: string;
@@ -50,6 +54,11 @@ interface User {
   species: Species;
   costume: Costume;
   createdAt: number;
+  team: string;
+  level: number;
+  xp: number;
+  raceWins: number;
+  hide: HideField[];
 }
 
 interface Presence {
@@ -74,10 +83,29 @@ interface FriendRow {
   name: string;
   species: Species;
   costume: Costume;
+  team: string | null;
+  level: number | null;
+  xp: number | null;
+  raceWins: number;
+  joinedAt: number;
   online: boolean;
   mood: Mood;
   cardsPerMin: number;
   lastSeen: number;
+}
+
+/** Shared profile fields accepted by register / heartbeat / rename. */
+const PROFILE_FIELDS = ["name", "species", "costume", "team", "level", "xp", "raceWins", "hide"] as const;
+
+interface ProfilePatch {
+  name?: string;
+  species?: Species;
+  costume?: Costume;
+  team?: string;
+  level?: number;
+  xp?: number;
+  raceWins?: number;
+  hide?: HideField[];
 }
 
 // ---------- small helpers ----------
@@ -216,6 +244,64 @@ function parseCode(v: unknown): string {
   return c;
 }
 
+function parseTeam(v: unknown): string {
+  if (typeof v !== "string") throw new HttpError(400, "invalid team");
+  const t = v.trim().toUpperCase();
+  if (t.length > MAX_TEAM || !/^[A-Z0-9]*$/.test(t)) throw new HttpError(400, "invalid team");
+  return t;
+}
+
+function parseHide(v: unknown): HideField[] {
+  if (!Array.isArray(v) || v.length > HIDE_FIELDS.length) throw new HttpError(400, "invalid hide");
+  const out: HideField[] = [];
+  for (const h of v) {
+    const f = oneOf(h, HIDE_FIELDS, "hide");
+    if (!out.includes(f)) out.push(f);
+  }
+  return out;
+}
+
+/** Validates the profile fields present in a body; absent fields are left undefined. */
+function parseProfile(body: Obj): ProfilePatch {
+  const p: ProfilePatch = {};
+  const name = cleanName(body.name);
+  if (name !== undefined) p.name = name;
+  if (body.species !== undefined) p.species = oneOf(body.species, SPECIES, "species");
+  if (body.costume !== undefined) p.costume = oneOf(body.costume, COSTUMES, "costume");
+  if (body.team !== undefined && body.team !== null) p.team = parseTeam(body.team);
+  if (body.level !== undefined) p.level = num(body.level, "level", 1, 999, true);
+  if (body.xp !== undefined) p.xp = num(body.xp, "xp", 0, 10_000_000, true);
+  if (body.raceWins !== undefined) p.raceWins = num(body.raceWins, "raceWins", 0, 100_000, true);
+  if (body.hide !== undefined) p.hide = parseHide(body.hide);
+  return p;
+}
+
+/** Applies a patch to a user; returns true when something changed. */
+function applyProfile(user: User, p: ProfilePatch): boolean {
+  let changed = false;
+  for (const k of Object.keys(p) as (keyof ProfilePatch)[]) {
+    const v = p[k];
+    if (v === undefined) continue;
+    const cur = user[k];
+    const same = Array.isArray(v) ? Array.isArray(cur) && v.length === cur.length && v.every((x, i) => x === cur[i]) : cur === v;
+    if (!same) {
+      (user as unknown as Record<string, unknown>)[k] = v;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** Fills in defaults for rows written before the profile fields existed. */
+function normalizeUser(u: User): User {
+  u.team = typeof u.team === "string" ? u.team : "";
+  u.level = typeof u.level === "number" ? u.level : 1;
+  u.xp = typeof u.xp === "number" ? u.xp : 0;
+  u.raceWins = typeof u.raceWins === "number" ? u.raceWins : 0;
+  u.hide = Array.isArray(u.hide) ? u.hide : [];
+  return u;
+}
+
 // ---------- storage ----------
 
 async function getJSON<T>(env: Env, key: string): Promise<T | null> {
@@ -227,7 +313,8 @@ async function putJSON(env: Env, key: string, value: unknown, ttl?: number): Pro
 }
 
 async function getUser(env: Env, code: string): Promise<User | null> {
-  return getJSON<User>(env, kUser(code));
+  const u = await getJSON<User>(env, kUser(code));
+  return u ? normalizeUser(u) : null;
 }
 
 async function getFriendCodes(env: Env, code: string): Promise<string[]> {
@@ -239,17 +326,24 @@ async function putFriendCodes(env: Env, code: string, codes: string[]): Promise<
   else await putJSON(env, kFriends(code), codes);
 }
 
-function presenceRow(user: User, p: Presence | null, now: number): FriendRow {
-  const online = !!p && p.online && now - p.lastSeen <= PRESENCE_TTL_S;
+/** A friend row as seen by someone else: the user's `hide` list is honoured. `self` shows everything. */
+function presenceRow(user: User, p: Presence | null, now: number, self = false): FriendRow {
+  const hidden = (f: HideField) => !self && user.hide.includes(f);
+  const online = !hidden("online") && !!p && p.online && now - p.lastSeen <= PRESENCE_TTL_S;
   return {
     code: user.code,
     name: user.name,
     species: user.species,
     costume: user.costume,
+    team: hidden("team") ? null : user.team,
+    level: hidden("level") ? null : user.level,
+    xp: hidden("level") ? null : user.xp,
+    raceWins: user.raceWins,
+    joinedAt: user.createdAt,
     online,
     mood: online ? p!.mood : "offline",
     cardsPerMin: online ? p!.cardsPerMin : 0,
-    lastSeen: p ? p.lastSeen : 0,
+    lastSeen: hidden("online") ? 0 : p ? p.lastSeen : 0,
   };
 }
 
@@ -310,18 +404,13 @@ async function limitByIp(env: Env, req: Request, now: number): Promise<void> {
 // ---------- handlers ----------
 
 async function handleRegister(env: Env, req: Request, now: number): Promise<Response> {
-  const body = await readBody(req, ["name", "species", "costume"]);
-  const name = cleanName(body.name);
-  const species = body.species === undefined ? undefined : oneOf(body.species, SPECIES, "species");
-  const costume = body.costume === undefined ? undefined : oneOf(body.costume, COSTUMES, "costume");
+  const body = await readBody(req, PROFILE_FIELDS);
+  const patch = parseProfile(body);
 
   // Idempotent when a valid token is presented: return the existing code and update the profile.
   if (bearer(req)) {
     const user = await authenticate(env, req);
-    user.name = name ?? user.name;
-    user.species = species ?? user.species;
-    user.costume = costume ?? user.costume;
-    await putJSON(env, kUser(user.code), user);
+    if (applyProfile(user, patch)) await putJSON(env, kUser(user.code), user);
     return json({ token: user.token, code: user.code });
   }
 
@@ -333,20 +422,24 @@ async function handleRegister(env: Env, req: Request, now: number): Promise<Resp
   const user: User = {
     token,
     code,
-    name: name ?? DEFAULT_NAME,
-    species: species ?? "wild",
-    costume: costume ?? "none",
+    name: DEFAULT_NAME,
+    species: "wild",
+    costume: "none",
     createdAt: now,
+    team: "",
+    level: 1,
+    xp: 0,
+    raceWins: 0,
+    hide: [],
   };
+  applyProfile(user, patch);
   await Promise.all([putJSON(env, kUser(code), user), env.FLY.put(kTok(await sha256Hex(token)), code)]);
   return json({ token, code }, 201);
 }
 
 async function handleHeartbeat(env: Env, req: Request, user: User, now: number): Promise<Response> {
-  const body = await readBody(req, ["name", "species", "costume", "mood", "cardsPerMin", "sessionCards", "sessionAgain", "race"]);
-  const name = cleanName(body.name);
-  const species = body.species === undefined ? user.species : oneOf(body.species, SPECIES, "species");
-  const costume = body.costume === undefined ? user.costume : oneOf(body.costume, COSTUMES, "costume");
+  const body = await readBody(req, [...PROFILE_FIELDS, "mood", "cardsPerMin", "sessionCards", "sessionAgain", "race"]);
+  const patch = parseProfile(body);
   const mood = body.mood === undefined ? "idle" : oneOf(body.mood, MOODS, "mood");
   const cardsPerMin = body.cardsPerMin === undefined ? 0 : num(body.cardsPerMin, "cardsPerMin", 0, 1000);
   const sessionCards = body.sessionCards === undefined ? 0 : num(body.sessionCards, "sessionCards", 0, 100000, true);
@@ -368,12 +461,7 @@ async function handleHeartbeat(env: Env, req: Request, user: User, now: number):
     };
   }
 
-  const profileChanged = (name !== undefined && name !== user.name) || species !== user.species || costume !== user.costume;
-  if (profileChanged) {
-    user.name = name ?? user.name;
-    user.species = species;
-    user.costume = costume;
-  }
+  const profileChanged = applyProfile(user, patch);
 
   const presence: Presence = {
     code: user.code,
@@ -439,32 +527,50 @@ async function handleRace(env: Env, url: URL, user: User, now: number): Promise<
   const codes = [user.code, ...(await getFriendCodes(env, user.code))];
   const rows = await Promise.all(
     codes.map(async (c) => {
-      const [u, r] = await Promise.all([getUser(env, c), getJSON<RaceRow>(env, kRace(c, week))]);
+      const self = c === user.code;
+      const [u, r] = await Promise.all([self ? user : getUser(env, c), getJSON<RaceRow>(env, kRace(c, week))]);
       if (!u) return null;
+      const hidden = (f: HideField) => !self && u.hide.includes(f);
       return {
         code: u.code,
         name: u.name,
         species: u.species,
         costume: u.costume,
-        days: r?.days ?? 0,
-        reviews: r?.reviews ?? 0,
+        team: hidden("team") ? null : u.team,
+        level: hidden("level") ? null : u.level,
+        xp: hidden("level") ? null : u.xp,
+        raceWins: u.raceWins,
+        joinedAt: u.createdAt,
+        days: hidden("days") ? null : (r?.days ?? 0),
+        reviews: hidden("weekly") ? null : (r?.reviews ?? 0),
         trueRetention: r?.trueRetention ?? null,
       };
     }),
   );
   const standings = rows
     .filter((r): r is NonNullable<typeof r> => r !== null)
-    .sort((a, b) => b.days - a.days || (b.trueRetention ?? -1) - (a.trueRetention ?? -1) || b.reviews - a.reviews || a.code.localeCompare(b.code));
+    .sort((a, b) => (b.days ?? -1) - (a.days ?? -1) || (b.trueRetention ?? -1) - (a.trueRetention ?? -1) || (b.reviews ?? -1) - (a.reviews ?? -1) || a.code.localeCompare(b.code));
   return json({ week, standings });
 }
 
 async function handleRename(env: Env, req: Request, user: User): Promise<Response> {
-  const body = await readBody(req, ["name"]);
-  const name = cleanName(body.name);
-  if (name === undefined) throw new HttpError(400, "name is required");
-  user.name = name;
-  await putJSON(env, kUser(user.code), user);
-  return json({ ok: true, name });
+  const body = await readBody(req, PROFILE_FIELDS);
+  const patch = parseProfile(body);
+  if (Object.keys(patch).length === 0) throw new HttpError(400, "nothing to change (name is required or empty)");
+  if (applyProfile(user, patch)) await putJSON(env, kUser(user.code), user);
+  return json({ ok: true, name: user.name });
+}
+
+async function handleProfile(env: Env, user: User, rawCode: string, now: number): Promise<Response> {
+  const code = parseCode(decodeURIComponent(rawCode));
+  if (code === user.code) {
+    return json({ ok: true, profile: presenceRow(user, await getJSON<Presence>(env, kPres(code)), now, true) });
+  }
+  const mine = await getFriendCodes(env, user.code);
+  if (!mine.includes(code)) throw new HttpError(404, "not a friend");
+  const [friend, p] = await Promise.all([getUser(env, code), getJSON<Presence>(env, kPres(code))]);
+  if (!friend) throw new HttpError(404, "not a friend");
+  return json({ ok: true, profile: presenceRow(friend, p, now) });
 }
 
 async function handleDeleteMe(env: Env, user: User): Promise<Response> {
@@ -524,6 +630,8 @@ async function route(req: Request, env: Env): Promise<Response> {
   const del = /^\/v1\/friends\/([^/]+)$/.exec(path);
   if (del && method === "DELETE") return await handleRemoveFriend(env, user, del[1]);
   if (path === "/v1/race" && method === "GET") return await handleRace(env, url, user, now);
+  const prof = /^\/v1\/profile\/([^/]+)$/.exec(path);
+  if (prof && method === "GET") return await handleProfile(env, user, prof[1], now);
   if (path === "/v1/rename" && method === "POST") return await handleRename(env, req, user);
   if (path === "/v1/me" && method === "DELETE") return await handleDeleteMe(env, user);
 

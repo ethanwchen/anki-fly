@@ -29,8 +29,9 @@ class Race {
   async refresh() {
     const data = await ask('list');
     if (!data) return;
+    this.data = data;
     $('code').textContent = data.me.code || 'no code yet';
-    $('week').textContent = data.week ? `week ${data.week.split('-W')[1]}` : '';
+    $('week').textContent = 'this week';
     const rows = [{ ...data.me, me: true }, ...(data.friends || [])];
     rows.sort((a, b) => (b.weekReviews || 0) - (a.weekReviews || 0) || (b.weekDays || 0) - (a.weekDays || 0));
     const max = Math.max(1, ...rows.map(r => r.weekReviews || 0));
@@ -40,13 +41,33 @@ class Race {
       rank++;
       const el = document.createElement('div');
       el.className = 'row' + (r.me ? ' me' : '') + (r.online ? ' on' : '');
-      el.innerHTML = `<div class="rk">${rank}</div><img class="ic" alt=""><div class="nm">${esc(r.name || r.code)}${r.me ? ' <span class="you">you</span>' : ''}</div>
-        <div class="bar"><div style="width:${Math.round((r.weekReviews || 0) / max * 100)}%"></div></div>
-        <div class="num">${(r.weekReviews || 0).toLocaleString()} cards</div><div class="days">${r.weekDays || 0}/7 days</div>`;
+      const hidden = (v) => v == null;
+      el.innerHTML = `<div class="rk">${rank}</div><img class="ic" alt="" title="profile"><div class="nm">${esc(r.name || r.code)}${r.team ? ` <span class="team">${esc(r.team)}</span>` : ''}${r.me ? ' <span class="you">you</span>' : ''}${r.level ? ` <span class="lv">Lv ${r.level}</span>` : ''}${r.raceWins ? ` <span class="wins" title="race wins">🏆 ${r.raceWins}</span>` : ''}</div>
+        <div class="bar"><div style="width:${hidden(r.weekReviews) ? 0 : Math.round((r.weekReviews || 0) / max * 100)}%"></div></div>
+        <div class="num">${hidden(r.weekReviews) ? '—' : (r.weekReviews || 0).toLocaleString() + ' cards'}</div><div class="days">${hidden(r.weekDays) ? '' : (r.weekDays || 0) + '/7 days'}</div>`;
       list.appendChild(el);
+      el.querySelector('.ic').onclick = () => this.profile(r);
+      el.querySelector('.nm').onclick = () => this.profile(r);
       this.icon(r.species || 'wild', r.costume || 'none').then(u => { if (u) el.querySelector('.ic').src = u; });
     }
     $('empty').hidden = rows.length > 1;
+  }
+  profile(r) {
+    const box = $('profile'); box.hidden = false;
+    const since = r.joinedAt ? new Date(r.joinedAt * 1000).toLocaleDateString() : '';
+    const hide = new Set((this.data.me.hide) || []);
+    const stat = (label, v) => `<div class="stat"><div class="k">${label}</div><div class="v">${v == null ? '—' : v}</div></div>`;
+    box.innerHTML = `<div class="pf"><img class="pic" alt=""><div class="pt"><div class="pn">${esc(r.name || r.code)}${r.team ? ` <span class="team">${esc(r.team)}</span>` : ''}</div>
+        <div class="ps">${r.me ? 'your fly' : (r.online ? 'studying right now' : 'offline')}${since ? ` · since ${since}` : ''} · code ${esc(r.code)}</div></div><button class="x" id="pclose">✕</button></div>
+      <div class="stats">${stat('level', r.level ? `Lv ${r.level}` : null)}${stat('cards this week', r.weekReviews)}${stat('days this week', r.weekDays == null ? null : r.weekDays + '/7')}${stat('race wins', r.raceWins ?? null)}</div>
+      ${r.me ? `<div class="priv"><b>What friends can see</b>
+        ${['level', 'weekly', 'days', 'team', 'online'].map(k => `<label><input type="checkbox" data-h="${k}" ${hide.has(k) ? '' : 'checked'}> ${{ level: 'my level', weekly: 'cards this week', days: 'days this week', team: 'my team tag', online: 'when I am online' }[k]}</label>`).join('')}</div>` : ''}`;
+    $('pclose').onclick = () => { box.hidden = true; };
+    this.icon(r.species || 'wild', r.costume || 'none').then(u => { const im = box.querySelector('.pic'); if (u && im) im.src = u; });
+    box.querySelectorAll('input[data-h]').forEach(cb => cb.onchange = async () => {
+      const hidden = [...box.querySelectorAll('input[data-h]')].filter(c => !c.checked).map(c => c.dataset.h);
+      const d = await ask('hide:' + hidden.join(',')); if (d) { this.data = d; }
+    });
   }
 }
 new Race().init();
