@@ -609,7 +609,9 @@ class AnkiFly {
 
   // ---------- persistence ----------
   save() {
-    if (!this.dirty || !this.sim || !this.sim.plastic) return;
+    // Never write before the saved memory has been loaded: an early save (e.g. the one-time reload after an
+    // update) would replace the real file with an empty one.
+    if (!this.loaded || !this.dirty || !this.sim || !this.sim.plastic) return;
     try { this._save(); } catch (e) { console.warn('[anki-fly] save failed', e); }
   }
   _save() {
@@ -621,6 +623,7 @@ class AnkiFly {
   loadMemory(data) {
     if (!data || data.v !== 1) return;
     if (data.sex && data.sex !== this.sex) return;          // a file from the other brain: leave it alone
+    this.loaded = true;
     const P = this.sim.plastic;
     if (P && Array.isArray(data.ratio) && data.ratio.length === P.edgeIdx.length) {
       for (let k = 0; k < P.edgeIdx.length; k++) this.sim.w[P.edgeIdx[k]] = this.sim.w0[P.edgeIdx[k]] * data.ratio[k];
