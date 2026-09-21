@@ -1,4 +1,5 @@
-import { SELF, env } from "cloudflare:test";
+import { SELF } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { isoWeekKey, PRESENCE_TTL_S, RATE_LIMIT_PER_MIN } from "../src/index";
 
@@ -243,6 +244,7 @@ describe("delete me", () => {
     expect(await env.FLY.get(`pres:${a.code}`)).toBeNull();
     expect(await env.FLY.get(`friends:${a.code}`)).toBeNull();
     expect((await env.FLY.list({ prefix: `race:${a.code}:` })).keys).toHaveLength(0);
-    expect((await env.FLY.list({ prefix: "tok:" })).keys).toHaveLength(1); // only Bob's
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(a.token))), (b) => b.toString(16).padStart(2, "0")).join("");
+    expect(await env.FLY.get(`tok:${hash}`)).toBeNull();
   });
 });

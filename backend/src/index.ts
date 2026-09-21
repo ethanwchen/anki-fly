@@ -508,7 +508,7 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   if (path === "/v1/register" && method === "POST") {
     await limitByToken(env, req, now);
-    return handleRegister(env, req, now);
+    return await handleRegister(env, req, now);
   }
 
   if (!path.startsWith("/v1/")) throw new HttpError(404, "not found");
@@ -517,14 +517,14 @@ async function route(req: Request, env: Env): Promise<Response> {
   await limitByToken(env, req, now);
   const user = await authenticate(env, req);
 
-  if (path === "/v1/heartbeat" && method === "POST") return handleHeartbeat(env, req, user, now);
-  if (path === "/v1/friends" && method === "POST") return handleAddFriend(env, req, user);
-  if (path === "/v1/friends" && method === "GET") return handleListFriends(env, user, now);
+  if (path === "/v1/heartbeat" && method === "POST") return await handleHeartbeat(env, req, user, now);
+  if (path === "/v1/friends" && method === "POST") return await handleAddFriend(env, req, user);
+  if (path === "/v1/friends" && method === "GET") return await handleListFriends(env, user, now);
   const del = /^\/v1\/friends\/([^/]+)$/.exec(path);
-  if (del && method === "DELETE") return handleRemoveFriend(env, user, del[1]);
-  if (path === "/v1/race" && method === "GET") return handleRace(env, url, user, now);
-  if (path === "/v1/rename" && method === "POST") return handleRename(env, req, user);
-  if (path === "/v1/me" && method === "DELETE") return handleDeleteMe(env, user);
+  if (del && method === "DELETE") return await handleRemoveFriend(env, user, del[1]);
+  if (path === "/v1/race" && method === "GET") return await handleRace(env, url, user, now);
+  if (path === "/v1/rename" && method === "POST") return await handleRename(env, req, user);
+  if (path === "/v1/me" && method === "DELETE") return await handleDeleteMe(env, user);
 
   throw new HttpError(404, "not found");
 }
