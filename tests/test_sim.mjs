@@ -15,20 +15,22 @@ test('single neuron fires under Poisson drive', () => {
 });
 
 test('excitatory chain propagates with delay', () => {
-  // 0 -> 1 -> 2 with strong weights
-  const g = buildCSR(3, [0, 1], [1, 2], [10, 10]);
+  // 0 -> 1 -> 2 with strong weights (g-jump of 100 mV ~ 16 mV peak PSP)
+  const g = buildCSR(3, [0, 1], [1, 2], [100, 100]);
   const sim = new Sim(g);
-  // force neuron 0 to spike once
   sim.v[0] = -44;
   const s0 = sim.tick(); assert.deepEqual(s0, [0]);
-  const s1 = sim.tick(); assert.deepEqual(s1, []);      // 1ms: not yet delivered (delay 2 steps)
-  const s2 = sim.tick(); assert.deepEqual(s2, [1]);     // delivered
-  sim.tick();
-  const s4 = sim.tick(); assert.deepEqual(s4, [2]);
+  const s1 = sim.tick(); assert.deepEqual(s1, []);      // delay is 2 steps
+  const s2 = sim.tick(); assert.deepEqual(s2, []);      // delivered into g; v needs a step to rise
+  let first1 = -1, first2 = -1;
+  for (let t = 3; t < 40; t++) { const sp = sim.tick(); if (sp.includes(1) && first1 < 0) first1 = t; if (sp.includes(2) && first2 < 0) first2 = t; }
+  assert.ok(first1 > 2 && first1 < 10, `neuron 1 fired at ${first1}`);
+  assert.ok(first2 > first1 + 2, `neuron 2 fired at ${first2}`);
+  assert.equal(sim.spikeCounts[0], 1);
 });
 
 test('inhibition prevents firing', () => {
-  const g = buildCSR(2, [0], [1], [-10]);
+  const g = buildCSR(2, [0], [1], [-60]);
   const sim = new Sim(g);
   sim.stimulate([0, 1], 300, 500);
   sim.run(500);
@@ -88,8 +90,8 @@ if (existsSync(real)) {
     const ms = performance.now() - t0;
     console.log(`   n=${g.n} nnz=${g.col.length} baseline spikes=${base} 500ms sim in ${ms.toFixed(0)}ms wall`);
     assert.equal(base, 0);
-    const odor = meta.groups.PN_glomeruli[Object.keys(meta.groups.PN_glomeruli)[0]];
-    sim.stimulate(odor, 100, 500);
+    const odor = Object.keys(meta.groups.PN_glomeruli).slice(0, 6).flatMap(k => meta.groups.PN_glomeruli[k]);
+    sim.stimulate(odor, 150, 500);
     sim.run(500);
     const kc = meta.groups.KC;
     const active = kc.filter(i => sim.spikeCounts[i] > 0).length;

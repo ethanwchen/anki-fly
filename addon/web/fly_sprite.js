@@ -7,7 +7,7 @@ export class FlySprite {
     this.dpr = window.devicePixelRatio || 1;
     this.state = 'idle';
     this.stateT = 0;
-    this.x = 0.5; this.y = 0.62; this.dir = 1;
+    this.x = 0.52; this.y = 0.6; this.dir = 1;
     this.t = 0;
     this.blink = 0;
     this.resize();
@@ -40,7 +40,7 @@ export class FlySprite {
     const ctx = this.ctx, W = this.canvas.width, H = this.canvas.height, d = this.dpr;
     ctx.clearRect(0, 0, W, H);
     const cx = this.x * W, cy = this.y * H;
-    const S = Math.min(W, H) / 110 * d; // scale unit
+    const S = Math.min(W / 78, H / 120); // scale unit (W/H are device px already)
     const s = this.state, t = this.t;
     const bob = (s === 'sleep') ? Math.sin(t / 900) * 1.2 : (s === 'idle' ? Math.sin(t / 500) * 0.8 : 0);
     ctx.save();

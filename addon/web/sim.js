@@ -2,6 +2,9 @@
 // Parameters follow Shiu et al. 2024 (Nature), "A leaky integrate-and-fire computational
 // model based on the connectome of the entire adult Drosophila brain".
 //
+// Model (Brian2 form, from Shiu's model.py):
+//   dv/dt = (v_0 - v + g) / t_mbr        (unless refractory)
+//   dg/dt = -g / tau_syn                  on_pre: g += w
 // Graph is CSR over OUTGOING edges: rowptr[n+1], col[nnz], w[nnz] (mV per spike, signed).
 // Time step is fixed (dt ms). Synaptic delay is rounded to whole steps.
 
@@ -11,6 +14,7 @@ export const DEFAULT_PARAMS = {
   vRest: -52.0,     // mV
   vThresh: -45.0,   // mV
   vReset: -52.0,    // mV
+  tauSyn: 5.0,      // synaptic time constant, ms
   refrac: 2.2,      // ms
   delay: 1.8,       // ms axonal delay
   wUnit: 0.275,     // mV per synapse per spike (already baked into w by the extractor)
@@ -28,7 +32,7 @@ export class Sim {
     this.w = graph.w;           // live weights (plastic edges mutate this)
     this.w0 = graph.w0 || Float32Array.from(graph.w);
     this.v = new Float32Array(this.n).fill(this.p.vRest);
-    this.iIn = new Float32Array(this.n);       // input arriving this step
+    this.g = new Float32Array(this.n);         // synaptic drive (mV), decays with tauSyn
     this.refracUntil = new Float32Array(this.n);
     this.lastSpike = new Float32Array(this.n).fill(-1e9);
     this.t = 0;
@@ -44,7 +48,7 @@ export class Sim {
     // External drive: per-neuron Poisson rate (Hz) applied until an expiry time.
     this.extRate = new Float32Array(this.n);
     this.extUntil = new Float32Array(this.n);
-    this.extAmp = 4.0; // mV per external event, enough to reliably fire from rest in a few events
+    this.extAmp = 30.0; // g-jump per external event (~4.7 mV peak PSP); a couple within 10 ms fire the cell
     // Plasticity
     this.elig = new Float32Array(this.n);
     this.plastic = null; // { edgeIdx: Int32Array, pre: Int32Array, post: Int32Array, cls: Uint8Array }
@@ -105,8 +109,8 @@ export class Sim {
 
   // Advance one dt. Returns array of neuron indices that spiked.
   tick() {
-    const { dt, tau, vRest, vThresh, vReset, refrac, tauElig } = this.p;
-    const n = this.n, v = this.v, iIn = this.iIn;
+    const { dt, tau, tauSyn, vRest, vThresh, vReset, refrac, tauElig } = this.p;
+    const n = this.n, v = this.v, g = this.g;
     const rowptr = this.rowptr, col = this.col, w = this.w;
     const t = this.t;
 
@@ -115,7 +119,7 @@ export class Sim {
     for (let a = 0; a < arriving.length; a++) {
       const pre = arriving[a];
       const s = rowptr[pre], e = rowptr[pre + 1];
-      for (let k = s; k < e; k++) iIn[col[k]] += w[k];
+      for (let k = s; k < e; k++) g[col[k]] += w[k];
     }
     arriving.length = 0;
 
@@ -126,12 +130,13 @@ export class Sim {
       const r = extRate[i];
       if (r > 0) {
         if (t >= extUntil[i]) { extRate[i] = 0; continue; }
-        if (rng() < r * dt * 1e-3) iIn[i] += amp;
+        if (rng() < r * dt * 1e-3) g[i] += amp;
       }
     }
 
     // 3. integrate + threshold
     const decay = dt / tau;
+    const gDecay = Math.exp(-dt / tauSyn);
     const spikes = this.spikesThisStep; spikes.length = 0;
     const refracUntil = this.refracUntil, spiked = this.spiked;
     const eligDecay = Math.exp(-dt / tauElig);
@@ -141,9 +146,9 @@ export class Sim {
       spiked[i] = 0;
       elig[i] *= eligDecay;
       rate[i] *= rDecay;
-      if (t < refracUntil[i]) { v[i] = vReset; iIn[i] = 0; continue; }
-      let vi = v[i] + (vRest - v[i]) * decay + iIn[i];
-      iIn[i] = 0;
+      if (t < refracUntil[i]) { v[i] = vReset; continue; }   // v and g frozen while refractory (Brian2 "unless refractory")
+      let vi = v[i] + (vRest - v[i] + g[i]) * decay;
+      g[i] *= gDecay;
       if (vi >= vThresh) {
         vi = vReset;
         refracUntil[i] = t + refrac;

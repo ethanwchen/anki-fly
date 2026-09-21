@@ -4,8 +4,9 @@ import { BrainView } from './brain_view.js';
 import { FlySprite } from './fly_sprite.js';
 
 const $ = (id) => document.getElementById(id);
-const hasPy = typeof window.pycmd === 'function';
-const py = (msg) => { if (hasPy) window.pycmd(msg); else console.log('[pycmd]', msg.slice(0, 120)); };
+// Anki injects window.pycmd at DocumentReady, after module scripts run, so check lazily.
+const hasPy = () => typeof window.pycmd === 'function';
+const py = (msg) => { if (hasPy()) window.pycmd(msg); else console.log('[pycmd]', msg.slice(0, 120)); };
 
 const GREEN = [120, 255, 140], RED = [255, 90, 90], YELLOW = [255, 220, 90];
 
@@ -37,6 +38,7 @@ class AnkiFly {
       this.sim.setPlasticEdges(Int32Array.from(P.edge), Int32Array.from(P.pre), Int32Array.from(P.post), Uint8Array.from(P.cls));
     }
     this.kcSet = new Set(this.g.KC);
+    meta.denseGroups = this.kcSet;
     this.brain = new BrainView($('brain'), meta);
     this.sprite = new FlySprite($('fly'));
     $('count').textContent = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses`;
@@ -47,7 +49,9 @@ class AnkiFly {
     this.tonic();
     setInterval(() => this.tonic(), 2000);
     setInterval(() => this.save(), 15000);
-    py('fly:ready');
+    // Python may inject pycmd slightly after we load; retry until the bridge is up.
+    const announce = () => { if (hasPy()) py('fly:ready'); else setTimeout(announce, 100); };
+    announce();
   }
 
   tonic() {
@@ -72,7 +76,7 @@ class AnkiFly {
         this.currentOdor = this.odorFor(this.currentNid);
         this.clearOdor();
         this.odorIdx = this.currentOdor.flatMap(k => g.PN_glomeruli[k]);
-        sim.stimulate(this.odorIdx, 90, 60000);
+        sim.stimulate(this.odorIdx, 150, 60000);
         this.wakeIfNeeded();
         this.updateMemoryBar();
         this.setStatus(`sniffing card · glomeruli ${this.currentOdor.join(' ')}`);
@@ -136,7 +140,7 @@ class AnkiFly {
     let h = 2166136261;
     for (const ch of nid) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
     const out = [];
-    while (out.length < Math.min(3, keys.length)) {
+    while (out.length < Math.min(6, keys.length)) {
       h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
       const k = keys[h % keys.length];
       if (!out.includes(k)) out.push(k);
@@ -156,7 +160,7 @@ class AnkiFly {
 
   sugar() {
     const g = this.g;
-    if (g.GRN_sugar?.length) this.sim.stimulate(g.GRN_sugar, 120, 900);
+    if (g.GRN_sugar?.length) this.sim.stimulate(g.GRN_sugar, 150, 900);
     this.force('proboscis', 1600);
     this.setStatus('sugar! · proboscis extension');
   }
@@ -254,7 +258,7 @@ window.fly = fly;
 fly.init().catch(e => { $('status').textContent = 'failed to load brain: ' + e.message; console.error(e); });
 
 // Dev panel when opened directly in a browser (no pycmd).
-if (!hasPy || new URLSearchParams(location.search).has('dev')) {
+if (new URLSearchParams(location.search).has('dev') || location.protocol === 'file:') {
   const dev = $('dev'); dev.style.display = 'flex';
   let nid = 1000;
   const btn = (label, fn) => { const b = document.createElement('button'); b.textContent = label; b.onclick = fn; dev.appendChild(b); };

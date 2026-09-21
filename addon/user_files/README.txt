@@ -1,0 +1,1 @@
+Anki Fly stores the fly's learned synapse weights here (memory.json).

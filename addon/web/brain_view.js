@@ -24,13 +24,12 @@ export class BrainView {
     // Project soma xyz (nm) to canvas: use x (left-right) and z (dorsal-ventral) -> frontal view.
     const { xyz } = this.meta;
     const n = this.n;
-    let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
-    for (let i = 0; i < n; i++) {
-      const x = xyz[3 * i], y = xyz[3 * i + 1];
-      if (x < minx) minx = x; if (x > maxx) maxx = x;
-      if (y < miny) miny = y; if (y > maxy) maxy = y;
-    }
-    this.bounds = { minx, maxx, miny, maxy };
+    // Percentile bounds so a few far-away somas (e.g. in the nerve cord) don't squash the brain.
+    const xs = new Float32Array(n), ys = new Float32Array(n);
+    for (let i = 0; i < n; i++) { xs[i] = xyz[3 * i]; ys[i] = xyz[3 * i + 1]; }
+    xs.sort(); ys.sort();
+    const q = (a, f) => a[Math.min(n - 1, Math.floor(f * n))];
+    this.bounds = { minx: q(xs, 0.005), maxx: q(xs, 0.995), miny: q(ys, 0.01), maxy: q(ys, 0.985) };
     this.px = new Float32Array(n); this.py = new Float32Array(n);
     this.resize();
   }
@@ -45,9 +44,10 @@ export class BrainView {
     const s = Math.min(sx, sy);
     const ox = (this.w - s * (maxx - minx)) / 2, oy = (this.h - s * (maxy - miny)) / 2;
     const { xyz } = this.meta;
+    const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
     for (let i = 0; i < this.n; i++) {
-      this.px[i] = ox + (xyz[3 * i] - minx) * s;
-      this.py[i] = oy + (xyz[3 * i + 1] - miny) * s;
+      this.px[i] = ox + (clamp(xyz[3 * i], minx, maxx) - minx) * s;
+      this.py[i] = oy + (clamp(xyz[3 * i + 1], miny, maxy) - miny) * s;
     }
     this._buildStatic();
   }
@@ -58,10 +58,13 @@ export class BrainView {
     off.width = this.w; off.height = this.h;
     const c = off.getContext('2d');
     const nt = this.meta.nt;
-    const r = Math.max(0.6, 0.9 * this.dpr);
+    const r = Math.max(0.6, 0.8 * this.dpr);
+    const dense = this.meta.denseGroups || new Set();
     for (let i = 0; i < this.n; i++) {
       const col = NT_COLORS[nt[i]] || NT_COLORS.UNK;
-      c.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.28)`;
+      // Kenyon cells are thousands of somas in one tight cluster; fade them so they read as a region.
+      const a = dense.has(i) ? 0.05 : 0.22;
+      c.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${a})`;
       c.fillRect(this.px[i] - r / 2, this.py[i] - r / 2, r, r);
     }
     this.staticLayer = off;

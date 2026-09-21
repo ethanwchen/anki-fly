@@ -3,5 +3,5 @@ __pycache__/
 *.pyc
 .DS_Store
 tools/cache/
-addon/user_files/
+addon/user_files/memory.json*
 addon/meta.json
