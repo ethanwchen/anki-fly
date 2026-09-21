@@ -1,4 +1,4 @@
-AnkiWeb listing for Drosophil-Anki (v0.2.3)
+AnkiWeb listing for Drosophil-Anki (v0.2.4)
 ============================================
 
 Title (under 80 chars):  Drosophil-Anki: a fruit fly with a real brain studies with you
@@ -33,7 +33,7 @@ Paste everything between the lines into the Description box (Markdown).
 
 **Make it yours**: name it, give it a team tag, level it up with XP from every review, and dress it from a **Wardrobe** of 40 costumes unlocked by studying (hats, sunglasses, cat ears, seasonal outfits, and a medical and language-learner set).
 
-**Fly race** (optional): a weekly leaderboard on the home screen of cards reviewed by you and your friends, each fly's face next to its name, a green dot for who is studying right now, and profiles you can click. You choose what friends can see. Only your fly's name, look, level and weekly totals are shared, never cards, decks or individual answers. Turn it on under Tools > Drosophil-Anki.
+**Fly race** (optional): a weekly leaderboard on the home screen of cards reviewed by you and your friends, each fly's face next to its name, a green dot for who is studying right now, and profiles you can click. You choose what friends can see. Only your fly's name, look, level and weekly totals are shared, never cards, decks or individual answers. Turn it on under Tools > Drosophil-Anki > Friends: show my fly code.
 
 **Not distracting**: Deep Focus (Ctrl+Shift+D) keeps it still and silent; minimize, resize or hide it (Ctrl+Shift+F). A gentle nudge to take a break when your answers get slower and wronger, and a chip pointing at the cards you keep missing.
 
@@ -44,4 +44,4 @@ Open source (MIT): https://github.com/ethanwchen/anki-fly. MaleCNS data CC BY 4.
 ----------------------------------------------------------------------------------------------------
 
 Changelog line for this release:
-v0.2.3: 3D fly with desk scenes and moods, 40 costumes with a Wardrobe, male and female flies with two connectomes, levels and team tags, weekly fly race with profiles and privacy controls, quieter bubbles, resizable widget, many robustness fixes.
+v0.2.4: 3D fly with desk scenes and moods, 40 costumes with a Wardrobe, male and female flies with two connectomes, levels and team tags, weekly fly race with profiles and privacy controls, quieter bubbles, resizable widget, many robustness fixes.
