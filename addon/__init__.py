@@ -195,7 +195,8 @@ class FlyWidget(QObject):
             return
         rows = mw.col.db.all(
             "select c.nid, r.ease, r.id from revlog r join cards c on c.id = r.cid "
-            "where r.ease > 0 and r.type in (0, 1, 2) order by r.id")
+            "where r.ease > 0 and r.type in (0, 1, 2) order by r.id desc limit 500000")
+        rows.reverse()
         if not rows:
             tooltip("No review history yet. The fly shrugs.")
             return
@@ -205,7 +206,7 @@ class FlyWidget(QObject):
             n["n"] += 1
             n[("again", "hard", "good", "easy")[max(1, min(4, ease)) - 1]] += 1
             n["last"] = int(rid // 1000)
-        items = sorted(notes.values(), key=lambda x: -x["last"])[:20000]
+        items = sorted(notes.values(), key=lambda x: -x["last"])[:10000]
         if not askUser(f"Replay {len(rows):,} reviews of {len(items):,} notes into the fly's brain?\n\n"
                        "This takes a few seconds and adds to what it already remembers."):
             return

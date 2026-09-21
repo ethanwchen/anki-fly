@@ -15,10 +15,10 @@
   button { background: rgba(255,255,255,0.08); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
   button:hover { background: rgba(255,255,255,0.14); }
   main { display: grid; grid-template-columns: 320px 1fr; gap: 0; min-height: 0; }
-  #left { border-right: 1px solid var(--line); display: grid; grid-template-rows: 200px 1fr auto; min-height: 0; }
+  #left { border-right: 1px solid var(--line); display: grid; grid-template-rows: 200px 136px 1fr; min-height: 0; }
   #fly { width: 100%; height: 200px; display: block; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.15)); }
-  #brain { width: 100%; height: 100%; display: block; background: rgba(0,0,0,0.25); min-height: 0; }
-  #ticker { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; max-height: 150px; overflow: auto; }
+  #brain { width: 100%; height: 136px; display: block; background: rgba(0,0,0,0.28); box-sizing: border-box; }
+  #ticker { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 12px; overflow: auto; min-height: 0; }
   #ticker div { display: flex; gap: 8px; padding: 2px 0; color: var(--ink2); }
   #ticker div span:first-child { width: 14px; text-align: center; }
   #ticker div.ok span:first-child { color: var(--good); } #ticker div.no span:first-child { color: var(--bad); }

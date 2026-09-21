@@ -13,23 +13,45 @@ const py = (msg) => { if (hasPy()) window.pycmd(msg); else console.log('[pycmd]'
 
 const GREEN = [120, 255, 140], RED = [255, 90, 90], YELLOW = [255, 220, 90];
 
+// Voice lines: short, picked at random, spoken on a cadence rather than every event.
+const VOICE = {
+  newCard: ['new smell.', 'hm, new one.', 'never smelled this.', '*sniff*', 'first time?'],
+  likedCard: ['oh, this one.', 'I know this.', 'easy one.', 'we like this.', 'seen it.'],
+  dreadCard: ['ugh. this one.', 'this one stings.', 'not again…', 'nervous.', 'we struggle here.'],
+  seenCard: ['smelled this before.', 'familiar.', 'again? ok.', 'hm, I think I know it.'],
+  good: ['sweet.', 'yes.', 'got it.', 'nice.', 'good good.', 'rewired.', 'tasty.'],
+  easy: ['easy!', 'too easy.', 'ha.', 'more please.', 'yum.'],
+  again: ['ouch.', 'stings.', 'oof.', 'that hurt.', 'we\'ll get it.', 'noted.'],
+  hard: ['hard one.', 'close.', 'hmm.', 'almost.', 'tricky.'],
+  streak: ['streak {n}!', '{n} in a row.', 'on fire.', 'unstoppable.'],
+  streakBroken: ['streak gone.', 'well.', 'that one got us.'],
+  sugar: ['sugar!', 'sweet sweet sugar.', 'proboscis time.'],
+  loom: ['eek!', 'shadow!', 'jump!'],
+  sleepy: ['zzz…', 'sleepy.', 'desk is comfy.'],
+  wake: ['huh? oh, hi.', 'I\'m up. I\'m up.', 'back to it.'],
+  idle: ['still here.', 'waiting.', 'take your time.', 'cards?', 'I\'ll wait.'],
+  sessionEnd: ['{cards} cards. good session.', 'done for now.', '{cards} cards, {again} stung.'],
+  amnesia: ['…who are you?', 'blank.', 'what deck?'],
+  synced: ['I remember now.', 'so many smells.', '{n} cards. wow.'],
+};
+const pick = (key, vars = {}) => { const pool = VOICE[key]; const t = pool[Math.floor(Math.random() * pool.length)]; return t.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? ''); };
+
+const NT_WORDS = { ACH: 'acetylcholine, excites', GABA: 'GABA, inhibits', GLUT: 'glutamate, inhibits', DA: 'dopamine', SER: 'serotonin', OCT: 'octopamine', UNK: 'unknown transmitter' };
+const GROUP_WORDS = { KC: 'memory cell (Kenyon cell)', MBON: 'memory output neuron', PAM: 'reward dopamine neuron', PPL1: 'punishment dopamine neuron', APL_DPM: 'keeps memories sparse',
+  LC4: 'looming detector', GF: 'giant fiber, escape', GRN_sugar: 'sugar taste neuron', GRN_interneurons: 'taste relay', MN_proboscis: 'proboscis muscle neuron',
+  DNp09: 'walk command', DNg11: 'grooming command', MDN: 'back-up command', DNa01: 'turn command', DNa02: 'turn command', background: 'other brain neuron' };
+
 const FACTS = [
-  'My whole nervous system has ~166,700 neurons. You gave me 9,000 of them.',
-  'Each card smells different to me: its note id picks 6 of my 61 glomeruli.',
-  'Only ~5% of my Kenyon cells fire for any one smell. Sparse codes don\'t collide.',
-  'Dopamine doesn\'t excite my neurons here — it rewires Kenyon cell → MBON synapses.',
-  'PAM neurons = reward. PPL1 neurons = punishment. You are my dopamine.',
-  'My APL neuron is GABAergic and quiets my Kenyon cells so memories stay sparse.',
-  'DNp01 is my giant fiber. One spike and I take off in ~5 ms.',
-  'Sugar on my labellum → MN9 → proboscis out. Same wiring as the real fly.',
-  'This wiring is MaleCNS v1.0 (Janelia + Google, 2026), CC BY 4.0.',
-  'My neurons are leaky integrate-and-fire units: τ = 20 ms, threshold −45 mV.',
-  'Glutamatergic MBONs steer me away; GABA/ACh MBONs steer me toward.',
-  'Every synapse adds 0.275 mV × synapse count — the Shiu et al. 2024 model.',
-  'When you press Again, my avoidance is left alone and my approach is weakened.',
-  'I forget slowly: depressed synapses recover toward baseline over hours.',
-  'Real flies remember a punished odor for about a day. I remember until you delete memory.json.',
-  'Been using Anki for years? Tools → Anki Fly → Sync, and I will replay your whole history into my synapses.',
+  'I have 9,000 real neurons in here.',
+  'Each card is a different smell to me.',
+  'Only ~5% of my memory cells fire per smell.',
+  'Good = reward dopamine. Again = punishment dopamine.',
+  'Dopamine rewires my synapses. That is how I learn.',
+  'My wiring is from a real fly (MaleCNS 2026).',
+  'Hover my brain to see what each dot is.',
+  'Deep Focus in the gear menu if I get chatty.',
+  'Tools → Anki Fly → Sync to give me your history.',
+  '5 in a row and I get sugar.',
 ];
 
 class AnkiFly {
@@ -106,9 +128,14 @@ class AnkiFly {
       let best = -1, bd = 36 * d * d;
       const px = this.brain.px, py_ = this.brain.py;
       for (let i = 0; i < this.meta.n; i++) { const dx = px[i] - x, dy = py_[i] - y, dd = dx * dx + dy * dy; if (dd < bd) { bd = dd; best = i; } }
-      if (best >= 0) this.setStatus(`${this.meta.type[best] || 'unnamed'} · ${this.meta.nt[best]} · ${this.groupOf(best)}`, true);
+      if (best >= 0) this.setStatus(`${this.meta.type[best] || 'unnamed neuron'} · ${NT_WORDS[this.meta.nt[best]] || this.meta.nt[best]} · ${this.groupWords(this.groupOf(best))}`, true);
     });
     brain.addEventListener('mouseleave', () => { this.hoverStatus = null; if (this.statusText) $('status').textContent = this.statusText; });
+  }
+
+  groupWords(g) {
+    if (g.startsWith('PN ')) return `smell input (${g.slice(3)})`;
+    return GROUP_WORDS[g] || g;
   }
 
   groupOf(i) {
@@ -120,6 +147,14 @@ class AnkiFly {
       }
     }
     return this.groupIndex.get(i) || 'brain';
+  }
+
+  // Speak only sometimes: `every` = 1 in N chance, unless `force`.
+  maybeSay(key, vars = {}, { every = 3, ms = 2600, force = false } = {}) {
+    const now = performance.now();
+    if (!force && (Math.random() >= 1 / every || now - (this.lastSaid || 0) < 4000)) return;
+    this.lastSaid = now;
+    this.say(pick(key, vars), ms);
   }
 
   say(text, ms = 3200) {
@@ -161,7 +196,7 @@ class AnkiFly {
       case 'amnesia':
         this.memory = {}; this.streak = 0; this.stats = { spikes: 0, reviews: 0 };
         if (this.sim.plastic) { const P = this.sim.plastic; for (let k = 0; k < P.edgeIdx.length; k++) this.sim.w[P.edgeIdx[k]] = this.sim.w0[P.edgeIdx[k]]; }
-        this.dirty = true; this.updateMemoryBar(); this.say('…who are you?');
+        this.dirty = true; this.updateMemoryBar(); this.maybeSay('amnesia', {}, { every: 1, force: true });
         break;
       case 'question': {
         this.currentNid = String(ev.nid);
@@ -171,12 +206,10 @@ class AnkiFly {
         sim.stimulate(this.odorIdx, 150, 60000);
         this.wakeIfNeeded();
         this.updateMemoryBar();
-        this.setStatus(`sniffing card · glomeruli ${this.currentOdor.join(' ')}`);
         const m = this.memory[this.currentNid];
-        if (!m) this.say(`*sniff* new smell: ${this.currentOdor.slice(0, 3).join(', ')}…`);
-        else if (this.pref(m) > 0.3) this.say(`oh, this one. ${ev.lapses > 2 ? 'we struggled, but' : ''} I like this one.`);
-        else if (this.pref(m) < -0.3) this.say(`hm. this smell stings. seen ${m.seen}×.`);
-        else this.say(`I've smelled this ${m.seen}× before…`);
+        const feel = !m ? 'new to the fly' : this.pref(m) > 0.3 ? 'the fly likes this one' : this.pref(m) < -0.3 ? 'the fly dreads this one' : `the fly has seen this ${m.seen}×`;
+        this.setStatus(`sniffing this card · ${feel}`, false, `odor = glomeruli ${this.currentOdor.join(' ')} (from the note id)`);
+        this.maybeSay(!m ? 'newCard' : this.pref(m) > 0.3 ? 'likedCard' : this.pref(m) < -0.3 ? 'dreadCard' : 'seenCard', {}, { every: 4 });
         break;
       }
       case 'answer':
@@ -195,25 +228,25 @@ class AnkiFly {
           this.session.synapses += changed;
           this.brain.pulse(g.PAM, GREEN);
           this.streak++;
-          this.setStatus(`reward · PAM dopamine · ${changed} KC→MBON synapses depressed`);
-          this.say(ease === 4 ? `easy! ${changed} synapses rewired. streak ${this.streak}` : `sweet. PAM fired, ${changed} synapses weaker. ${secs}`);
+          this.setStatus(`liked that · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PAM reward dopamine depressed KC→MBON avoidance synapses');
           if (this.streak > 0 && this.streak % 5 === 0) this.sugar();
-          else if (this.streak > 0 && this.streak % 3 === 0) setTimeout(() => this.force('celebrate', 900), 800);
+          else if (this.streak > 0 && this.streak % 3 === 0) { setTimeout(() => this.force('celebrate', 900), 800); this.maybeSay('streak', { n: this.streak }, { every: 1, force: true }); }
+          else this.maybeSay(ease === 4 ? 'easy' : 'good', {}, { every: 3 });
         } else if (ease === 1) {
           sim.stimulate(g.PPL1, 60, 400);
           const changed = sim.dopamine(0, 1.0);
           this.session.synapses += changed; this.session.again++;
           this.brain.pulse(g.PPL1, RED);
-          this.streak = 0;
-          this.setStatus(`punishment · PPL1 dopamine · ${changed} synapses depressed`);
-          this.say(`ouch. PPL1 fired. I'll approach this smell less. ${secs}`);
+          const had = this.streak; this.streak = 0;
+          this.setStatus(`that stung · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PPL1 punishment dopamine depressed KC→MBON approach synapses');
+          if (had >= 3) this.maybeSay('streakBroken', {}, { every: 1, force: true }); else this.maybeSay('again', {}, { every: 2 });
         } else {
           sim.stimulate(g.PPL1, 25, 250);
           const changed = sim.dopamine(0, 0.4);
           this.session.synapses += changed;
           this.brain.pulse(g.PPL1, YELLOW);
-          this.setStatus('hard · weak PPL1 dopamine');
-          this.say(`hard one. a little PPL1. ${secs}`);
+          this.setStatus(`hard one · ${changed} synapses nudged${secs ? ' · ' + secs : ''}`, false, 'weak PPL1 dopamine');
+          this.maybeSay('hard', {}, { every: 3 });
         }
         if (this.currentNid) {
           const kcs = new Set(kcActive);
@@ -234,8 +267,8 @@ class AnkiFly {
       case 'session_end': {
         this.clearOdor();
         const s = this.session, mins = ((performance.now() - s.start) / 60000).toFixed(0);
-        this.setStatus(`session over · ${s.cards} cards · ${s.synapses} synapses rewired`);
-        if (s.cards) this.say(`we did ${s.cards} cards in ${mins} min. ${s.again} stung. ${s.synapses} synapses changed.`, 6000);
+        this.setStatus(`session over · ${s.cards} cards in ${mins} min · ${s.synapses} synapses rewired`);
+        if (s.cards) this.maybeSay('sessionEnd', { cards: s.cards, again: s.again }, { every: 1, force: true, ms: 5000 });
         this.session = { cards: 0, again: 0, synapses: 0, start: performance.now() };
         this.save();
         break;
@@ -270,14 +303,16 @@ class AnkiFly {
     if (g.LC4?.length) this.sim.stimulate(g.LC4, 150, 150);
     if (g.GF?.length) this.sim.stimulate(g.GF, 200, 60);
     this.force('startle', 700);
-    this.setStatus('looming shadow · giant fiber escape');
+    this.setStatus('startled', false, 'looming stimulus → LC4 → giant fiber (DNp01)');
+    this.maybeSay(this.state === 'sleep' || this.state === 'sleepDesk' ? 'wake' : 'loom', {}, { every: 2 });
   }
 
   sugar() {
     const g = this.g;
     if (g.GRN_sugar?.length) this.sim.stimulate(g.GRN_sugar, 150, 900);
     this.force('proboscis', 1600);
-    this.setStatus('sugar! · proboscis extension');
+    this.setStatus('sugar! 5 in a row', false, 'sugar GRNs → MN9 → proboscis extension');
+    this.maybeSay('sugar', {}, { every: 1, force: true });
   }
 
   force(state, ms) { this.forcedState = { state, until: performance.now() + ms }; }
@@ -337,10 +372,12 @@ class AnkiFly {
     try { this.sprite.update(wall); this.sprite.draw(); }
     catch (e) { console.warn('[anki-fly] sprite failed, switching to 2D', e); this.sprite = new FlySprite2D($('fly')); }
     this.brain.draw(wall);
-    if (!this.cfg.focus && now - this.lastEvent > 20000 && now - this.lastFact > 45000 && !asleep && !document.body.classList.contains('mini')) {
+    if (!this.cfg.focus && now - this.lastEvent > 30000 && now - this.lastFact > 120000 && !asleep && !document.body.classList.contains('mini')) {
       this.lastFact = now;
-      this.say(FACTS[this.factIdx++ % FACTS.length], 7000);
+      if (Math.random() < 0.6) this.say(FACTS[this.factIdx++ % FACTS.length], 6000); else this.maybeSay('idle', {}, { every: 1, force: true });
     }
+    if (asleep && !this.saidSleepy) { this.saidSleepy = true; this.maybeSay('sleepy', {}, { every: 1, force: true }); }
+    if (!asleep) this.saidSleepy = false;
     if ((this.frameNo = (this.frameNo | 0) + 1) % 15 === 0) {
       $('hz').textContent = `${(spikes * 1000 / Math.max(1, simMs) / this.meta.n).toFixed(1)} Hz`; $('hz').title = 'mean firing rate per neuron';
     }
@@ -351,9 +388,10 @@ class AnkiFly {
     $('session').textContent = s.cards ? `${s.cards} cards · ${s.again} stung · ${k(s.synapses)} synapses rewired` : `${Object.keys(this.memory).length} cards remembered`;
   }
 
-  setStatus(s, hover = false) {
+  setStatus(s, hover = false, detail = '') {
     if (hover) { this.hoverStatus = s; $('status').textContent = s; return; }
     this.statusText = s;
+    $('status').title = detail;
     if (!this.hoverStatus) $('status').textContent = s;
   }
 
@@ -374,13 +412,13 @@ class AnkiFly {
   async syncHistory(notes, reviews) {
     const sim = this.sim, g = this.g, total = notes.length;
     this.syncing = true;
-    this.say(`replaying ${reviews.toLocaleString()} reviews… hold on`, 6000);
+    this.say('replaying your history…', 6000);
     let done = 0, changed = 0;
     for (let i = 0; i < total; i++) {
       const n = notes[i];
       const odor = this.odorFor(String(n.nid)).flatMap(k => g.PN_glomeruli[k]);
       sim.elig.fill(0);                          // no cross-talk between notes
-      sim.stimulate(odor, 150, 120); sim.run(120); sim.clearStim(odor);
+      sim.stimulate(odor, 150, 90); sim.run(90); sim.clearStim(odor);
       const kcs = new Set(g.KC.filter(k => sim.elig[k] > 0.2));
       // reward depresses avoidance, punishment depresses approach; saturating so a year of reviews doesn't floor everything
       const reward = Math.min(2.5, 0.35 * n.good + 0.6 * n.easy);
@@ -397,7 +435,7 @@ class AnkiFly {
     this.dirty = true; this.save(); this.syncing = false;
     this.setStatus(`synced · ${total.toLocaleString()} notes remembered`);
     this.updateSession(); this.updateMemoryBar();
-    this.say(`done. I now remember ${Object.keys(this.memory).length.toLocaleString()} cards from ${reviews.toLocaleString()} reviews. ${changed.toLocaleString()} synapses changed.`, 8000);
+    this.say(`${pick('synced', { n: Object.keys(this.memory).length.toLocaleString() })} (${reviews.toLocaleString()} reviews, ${changed.toLocaleString()} synapses)`, 7000);
     this.force('celebrate', 900);
   }
 
@@ -421,7 +459,7 @@ class AnkiFly {
     this.memory = data.memory || {};
     this.stats = data.stats || this.stats;
     this.streak = data.streak || 0;
-    this.setStatus(`remembering ${Object.keys(this.memory).length} cards`);
+    this.setStatus(`remembers ${Object.keys(this.memory).length} of your cards`);
     this.updateSession();
   }
 }
