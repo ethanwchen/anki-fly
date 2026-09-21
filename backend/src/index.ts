@@ -18,25 +18,7 @@ export interface Env {
 
 // ---------- constants / allowlists ----------
 
-export const SPECIES = ["wild", "white", "ebony", "yellow", "female"] as const;
-export const MOODS = [
-  "study", "pressAgain", "pressHard", "pressGood", "pressEasy", "celebrate", "dance",
-  "zoomies", "crashout", "sulk", "sleepDesk", "still", "idle", "offline",
-] as const;
-export const COSTUMES = [
-  "none", "sunglasses", "monocle", "tophat", "catears", "bunnyears", "partyhat", "crown", "wizard",
-  "santa", "pirate", "halo", "devil", "viking", "chef", "graduate", "headphones", "bow", "flowers",
-  "cowboy", "beret", "alien", "scarf", "propeller", "pumpkin", "witch", "ghost", "antlers", "elf",
-  "stethoscope", "scrubcap", "headmirror", "goggles", "nursecap", "mask", "headset", "dictionary",
-  "snowman", "leprechaun", "hearts", "birthday",
-] as const;
-export const HIDE_FIELDS = ["level", "weekly", "days", "team", "online"] as const;
-export const MAX_TEAM = 6;
-
-export const PRESENCE_TTL_S = 120;
-export const RATE_LIMIT_PER_MIN = 60;
-export const MAX_FRIENDS = 50;
-export const MAX_NAME = 24;
+import { HttpError, SPECIES, MOODS, COSTUMES, HIDE_FIELDS, MAX_TEAM, PRESENCE_TTL_S, RATE_LIMIT_PER_MIN, MAX_FRIENDS, MAX_NAME, timingSafeEqualStr, isoWeekKey, cleanName } from "./lib";
 const MAX_BODY_BYTES = 4096;
 const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789";
 const CODE_LEN = 8;
@@ -110,11 +92,6 @@ interface ProfilePatch {
 
 // ---------- small helpers ----------
 
-class HttpError extends Error {
-  constructor(public status: number, message: string, public headers: Record<string, string> = {}) {
-    super(message);
-  }
-}
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -164,28 +141,8 @@ function newCode(): string {
 }
 
 /** Constant-time string equality (length is also compared without leaking timing on the content). */
-export function timingSafeEqualStr(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const ab = enc.encode(a);
-  const bb = enc.encode(b);
-  if (ab.byteLength !== bb.byteLength) {
-    // Compare something of equal length anyway so the work done does not depend on the secret.
-    crypto.subtle.timingSafeEqual(ab, ab);
-    return false;
-  }
-  return crypto.subtle.timingSafeEqual(ab, bb);
-}
 
 /** ISO-8601 week key for a unix-seconds timestamp, computed in UTC (weeks start Monday). */
-export function isoWeekKey(unixS: number): string {
-  const d = new Date(unixS * 1000);
-  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const dayNum = t.getUTCDay() || 7; // Mon=1 .. Sun=7
-  t.setUTCDate(t.getUTCDate() + 4 - dayNum); // move to the Thursday of this ISO week
-  const yearStart = Date.UTC(t.getUTCFullYear(), 0, 1);
-  const week = Math.ceil(((t.getTime() - yearStart) / 86400000 + 1) / 7);
-  return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
 
 const WEEK_RE = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
 const CODE_RE = /^[A-Z2-9]{8}$/;
@@ -217,14 +174,6 @@ async function readBody(req: Request, allowed: readonly string[]): Promise<Obj> 
 }
 
 /** Strips control characters, trims, caps at 24 chars. Empty -> undefined. */
-export function cleanName(v: unknown): string | undefined {
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "string") throw new HttpError(400, "name must be a string");
-  // eslint-disable-next-line no-control-regex
-  const s = v.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\ufeff]/g, "").trim();
-  if (s.length > MAX_NAME) throw new HttpError(400, `name must be at most ${MAX_NAME} characters`);
-  return s === "" ? undefined : s;
-}
 
 function oneOf<T extends string>(v: unknown, list: readonly T[], field: string): T {
   if (typeof v !== "string" || !(list as readonly string[]).includes(v)) throw new HttpError(400, `invalid ${field}`);

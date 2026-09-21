@@ -60,9 +60,18 @@ class Race {
     box.innerHTML = `<div class="pf"><img class="pic" alt=""><div class="pt"><div class="pn">${esc(r.name || r.code)}${r.team ? ` <span class="team">${esc(r.team)}</span>` : ''}</div>
         <div class="ps">${r.me ? 'your fly' : (r.online ? 'studying right now' : 'offline')}${since ? ` · since ${since}` : ''} · code ${esc(r.code)}</div></div><button class="x" id="pclose">✕</button></div>
       <div class="stats">${stat('level', r.level ? `Lv ${r.level}` : null)}${stat('cards this week', r.weekReviews)}${stat('days this week', r.weekDays == null ? null : r.weekDays + '/7')}${stat('race wins', r.raceWins ?? null)}</div>
+      ${r.me ? '' : `<div class="acts"><button id="premove">Remove friend</button></div>`}
       ${r.me ? `<div class="priv"><b>What friends can see</b>
         ${['level', 'weekly', 'days', 'team', 'online'].map(k => `<label><input type="checkbox" data-h="${k}" ${hide.has(k) ? '' : 'checked'}> ${{ level: 'my level', weekly: 'cards this week', days: 'days this week', team: 'my team tag', online: 'when I am online' }[k]}</label>`).join('')}</div>` : ''}`;
     $('pclose').onclick = () => { box.hidden = true; };
+    const rm = $('premove');
+    if (rm) rm.onclick = async () => {
+      if (!confirm(`Remove ${r.name || r.code} from your friends?`)) return;
+      const d = await ask('remove:' + r.code);
+      box.hidden = true;
+      if (d) { this.data = d; }
+      await this.refresh();
+    };
     this.icon(r.species || 'wild', r.costume || 'none').then(u => { const im = box.querySelector('.pic'); if (u && im) im.src = u; });
     box.querySelectorAll('input[data-h]').forEach(cb => cb.onchange = async () => {
       const hidden = [...box.querySelectorAll('input[data-h]')].filter(c => !c.checked).map(c => c.dataset.h);

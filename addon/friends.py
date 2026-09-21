@@ -224,6 +224,15 @@ class Friends:
                 showInfo("Could not add that code." + (f"\n\n{self.last_error}" if self.last_error else ""))
         self.ensure_registered(lambda: self._bg(lambda: self._call("POST", "/v1/friends", {"code": code}), done))
 
+    def remove_friend(self, code: str) -> None:
+        code = "".join(ch for ch in code.upper() if ch.isalnum())[:8]
+        if not code:
+            return
+        self.friends = [f for f in self.friends if f.get("code") != code]
+        if self.mock():
+            return
+        self._bg(lambda: self._call("DELETE", f"/v1/friends/{code}"), lambda _: self.heartbeat())
+
     def leave(self) -> None:
         if not self.enabled():
             return
@@ -284,6 +293,9 @@ def setup() -> None:
                 return (True, fr.snapshot())
             if cmd == "add":
                 fr.add_friend()
+            elif cmd.startswith("remove:"):
+                fr.remove_friend(cmd[7:])
+                return (True, fr.snapshot())
             elif cmd.startswith("hide:"):
                 fr.set_hidden([h for h in cmd[5:].split(",") if h])
                 return (True, fr.snapshot())

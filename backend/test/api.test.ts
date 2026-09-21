@@ -1,7 +1,7 @@
 import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { isoWeekKey, PRESENCE_TTL_S, RATE_LIMIT_PER_MIN } from "../src/index";
+import { isoWeekKey, PRESENCE_TTL_S, RATE_LIMIT_PER_MIN } from "../src/lib";
 
 const BASE = "https://fly.test";
 
