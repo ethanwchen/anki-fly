@@ -1,0 +1,4 @@
+MaleCNS v1.0 connectome (male fly data pack in this folder)
+Janelia Research Campus (HHMI) FlyEM project and Google Research, 2026.
+Licensed under Creative Commons Attribution 4.0 (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+Retrieved via neuprint-cns.janelia.org. The pack is a derived subgraph (see tools/extract_subgraph.py).

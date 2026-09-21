@@ -99,7 +99,7 @@ class AnkiFly {
     this.sprite = await makeSprite($('fly'));
     if (this.sprite.setScene) this.sprite.setScene('study');
     if (this.sprite.setSpecies) this.sprite.setSpecies(this.sex === 'female' ? 'female' : 'wild');
-    this.brainTitle = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses from MaleCNS v1.0`;
+    this.brainTitle = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses from ${this.sex === 'female' ? 'FlyWire FAFB v783' : 'MaleCNS v1.0'}`;
     $('brain').title = this.brainTitle + '. Hover a dot to see which neuron it is.';
     this.updateSession();
     window.addEventListener('resize', () => { try { this.brain.resize(); this.sprite.resize(); } catch (e) { console.warn(e); } });
@@ -111,10 +111,10 @@ class AnkiFly {
     setInterval(() => this.tonic(), 2000);
     setInterval(() => this.save(), 15000);
     // Python may inject pycmd slightly after we load; retry until the bridge is up.
-    for (const ev of (this.pending || [])) this.event(ev);
-    this.pending = null;
     const announce = () => { if (hasPy()) py('fly:ready'); else setTimeout(announce, 100); };
     announce();
+    // replay queued events after Python has had a chance to hand us the saved memory
+    setTimeout(() => { for (const ev of (this.pending || [])) this.event(ev); this.pending = null; }, 800);
   }
 
   wireControls() {
@@ -131,7 +131,8 @@ class AnkiFly {
     $('leech').onclick = (e) => { e.stopPropagation(); py('fly:leeches:' + this.leeches().join(',')); };
     item('m-rename', () => py('fly:rename'));
     item('m-team', () => py('fly:team'));
-    item('m-sex', () => py('fly:sex:toggle'));
+    item('m-sex', () => { this.dirty = true; this.save(); py('fly:sex:toggle'); });
+    window.addEventListener('pagehide', () => { this.dirty = true; this.save(); });
     item('m-wardrobe', () => py('fly:wardrobe:' + JSON.stringify({ costume: this.progress.costume, stats: this.progressStats() })));
     // resize grip: the widget grows toward the top-left; Python keeps the 2:1 ratio and repositions
     const grip = $('grip');
@@ -204,7 +205,8 @@ class AnkiFly {
 
   // ---------- events from Anki ----------
   event(ev) {
-    if (!this.sim) { (this.pending = this.pending || []).push(ev); return; }   // brain still loading
+    // Queue review events until the brain is loaded and the saved memory has arrived (config/loadMemory pass through).
+    if (!this.sim || (this.pending && ev.type !== 'loadMemory' && ev.type !== 'config')) { (this.pending = this.pending || []).push(ev); return; }
     try { this._event(ev); } catch (e) { console.warn('[anki-fly] event failed', ev && ev.type, e); }
   }
 
@@ -254,7 +256,6 @@ class AnkiFly {
         this.stats.reviews++;
         const kcActive = g.KC.filter(i => sim.elig[i] > 0.2);
         this.session.cards++;
-        this.bump();
         const secs = ev.ms ? (ev.ms / 1000).toFixed(0) + 's' : '';
         this.pacing(ease, ev.ms || 0);
         // mood: recent run of answers
@@ -285,7 +286,7 @@ class AnkiFly {
           this.brain.pulse(g.PPL1, RED);
           const had = this.streak; this.recordStreak(had); this.streak = 0;
           this.setStatus(`that stung · ${changed} synapses rewired${secs ? ' · ' + secs : ''}`, false, 'PPL1 punishment dopamine depressed KC→MBON approach synapses');
-          if (this.againRun >= 7 && (this.againRun - 7) % 5 === 0) { this.progress.crashouts = (this.progress.crashouts || 0) + 1; setTimeout(() => this.force('crashout', 3000), 800); this.sulkUntil = performance.now() + 60000; this.maybeSay('crashout', {}, { every: 1, force: true, ms: 3500 }); }
+          if (this.againRun >= 7 && (this.againRun - 7) % 5 === 0) { this.progress.crashouts = (this.progress.crashouts || 0) + 1; this.dirty = true; setTimeout(() => this.force('crashout', 3000), 800); this.sulkUntil = performance.now() + 60000; this.maybeSay('crashout', {}, { every: 1, force: true, ms: 3500 }); }
           else if (this.againRun === 4) { this.sulkUntil = performance.now() + 30000; this.maybeSay('sulk', {}, { every: 1, force: true }); }
           else if (had >= 3) this.maybeSay('streakBroken', {}, { every: 1, force: true }); else this.maybeSay('again', {}, { every: 2 });
         } else {
@@ -309,6 +310,7 @@ class AnkiFly {
         this.updateMemoryBar();
         this.updateSession();
         if (this.session.cards % 10 === 0) this.leechCheck();
+        this.bump();                                  // last, so a level-up isn't clobbered by the press animation
         break;
       }
       case 'wake': this.loom(); break;
@@ -330,7 +332,7 @@ class AnkiFly {
         this.setCostume(ev.name);
         break;
       case 'examScore':
-        if (ev.score > (this.progress.bestExam || 0)) { this.progress.bestExam = ev.score; this.dirty = true; this.bump(); this.progress.cards--; }
+        if (ev.score > (this.progress.bestExam || 0)) { this.progress.bestExam = ev.score; this.dirty = true; this.checkUnlocks(); }
         break;
       case 'sync':
         this.syncHistory(ev.notes, ev.reviews);
@@ -509,11 +511,15 @@ class AnkiFly {
   bump() {
     const p = this.progress;
     p.cards++;
-    const today = new Date().toISOString().slice(0, 10);
+    const d = new Date(), today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;   // local date
     let xp = 10;
     if (!p.days.includes(today)) { p.days.push(today); if (p.days.length > 4000) p.days.shift(); xp += 50; }
     this.addXp(xp);
     this.dirty = true;
+    this.checkUnlocks();
+  }
+
+  checkUnlocks() {
     const before = this.unlocked; this.unlocked = UNLOCKS.filter(c => unlocked(c.id, this.progressStats())).map(c => c.id);
     const fresh = before ? this.unlocked.filter(id => !before.includes(id)) : [];
     if (fresh.length) { this.say(`new costume unlocked: ${fresh[0]}! (gear → Wardrobe)`, 7000); this.force('celebrate', 900); }
@@ -600,7 +606,7 @@ class AnkiFly {
   }
   _save() {
     const P = this.sim.plastic, w = [];
-    for (let k = 0; k < P.edgeIdx.length; k++) w.push(+ (this.sim.w[P.edgeIdx[k]] / this.sim.w0[P.edgeIdx[k]]).toFixed(3));
+    for (let k = 0; k < P.edgeIdx.length; k++) w.push(+(this.sim.w[P.edgeIdx[k]] / this.sim.w0[P.edgeIdx[k]]).toFixed(3));
     py('fly:save:' + JSON.stringify({ v: 1, ratio: w, memory: this.memory, stats: this.stats, streak: this.streak, progress: this.progress }));
     this.dirty = false;
   }

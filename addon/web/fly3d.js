@@ -592,7 +592,10 @@ export class FlySprite {
   setScene(name) {
     name = name || null;
     if (name === this.sceneName) return;
-    if (this.sceneGroup) { this.stage.remove(this.sceneGroup); this.sceneGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+    if (this.sceneGroup) {
+      this.stage.remove(this.sceneGroup);
+      this.sceneGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+    }
     if (this.lampLight) { this.scene.remove(this.lampLight); this.lampLight = null; }
     this.sceneGroup = null; this.props = {}; this.reach = {}; this.sceneName = name;
     if (name && this.lite) this.buildLite(); else if (name === 'study') this.buildStudy(); else if (name === 'exam') this.buildExam();
@@ -662,11 +665,11 @@ export class FlySprite {
     this.head.eyes = E;
   }
   setCostume(name) {
-    name = name || 'none';
+    name = name && COSTUME_MAKERS[name] ? name : 'none';
     this.costume = name;
     if (!this.ready) return;
     this.spinner = null;
-    if (this.costumeGroup) { this.costumeGroup.parent.remove(this.costumeGroup); this.costumeGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); this.costumeGroup = null; }
+    if (this.costumeGroup) { this.costumeGroup.parent.remove(this.costumeGroup); this.costumeGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); this.costumeGroup = null; }
     if (name === 'none') { this.needsRender = true; return; }
     const G = this.costumeGroup = new THREE.Group(); this.byName.head.add(G);
     const H = this.head; G.position.copy(H.c); G.quaternion.copy(H.quat);   // costume space: x = right, y = forward, z = up, origin = head centre

@@ -56,7 +56,7 @@ def write_config(cfg: dict) -> None:
 
 def read_state() -> dict:
     try:
-        with open(STATE_PATH) as f:
+        with open(STATE_PATH, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
         return {}
@@ -67,10 +67,12 @@ def write_state(**kv) -> None:
     st.update(kv)
     try:
         os.makedirs(USER_FILES, exist_ok=True)
-        with open(STATE_PATH, "w") as f:
+        tmp = STATE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(st, f)
-    except OSError:
-        pass
+        os.replace(tmp, STATE_PATH)
+    except OSError as e:
+        log.warning("anki_fly: could not write state: %s", e)
 
 
 def sex() -> str:
@@ -83,7 +85,7 @@ def memory_path() -> str:
 
 def read_memory() -> dict | None:
     try:
-        with open(memory_path()) as f:
+        with open(memory_path(), encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
         data = None
@@ -115,13 +117,15 @@ class FlyWidget(QObject):
         host.installEventFilter(self)
         mw.bottomWeb.installEventFilter(self)
         mw.toolbarWeb.installEventFilter(self)
+        mw.web.installEventFilter(self)
+        mw.installEventFilter(self)   # window minimised -> hide the view so the page goes idle
         gui_hooks.theme_did_change.append(self._apply_transparency)
         self.apply_config()
         self.web.raise_()
 
     def _version(self) -> str:
         try:
-            with open(os.path.join(ADDON_DIR, "manifest.json")) as f:
+            with open(os.path.join(ADDON_DIR, "manifest.json"), encoding="utf-8") as f:
                 return str(json.load(f).get("human_version", ""))
         except Exception:
             return ""
@@ -173,6 +177,10 @@ class FlyWidget(QObject):
         try:
             if evt.type() in (QEvent.Type.Resize, QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.Move):
                 self.reposition()
+            elif obj is mw and evt.type() == QEvent.Type.WindowStateChange:
+                # a minimised Anki keeps child widgets "visible"; hide ours so the page pauses (no rAF, no sim)
+                self.minimised_window = bool(mw.windowState() & Qt.WindowState.WindowMinimized)
+                self.update_visibility()
         except Exception:
             pass
         return False
@@ -181,15 +189,25 @@ class FlyWidget(QObject):
     def reposition(self) -> None:
         host = mw.form.centralwidget
         m = int(self.cfg.get("margin", 12))
-        top = mw.toolbarWeb.height() if mw.toolbarWeb.isVisible() else 0
-        bottom = mw.bottomWeb.height() if mw.bottomWeb.isVisible() else 0
         w, h = self.web.width(), self.web.height()
         corner = self.cfg.get("corner", "bottom-right")
-        x = m if "left" in corner else host.width() - w - m
-        y = top + m if "top" in corner else host.height() - h - m - bottom
+        # Anchor to the review web view's rectangle (in centralwidget coordinates) rather than the whole
+        # central widget: add-ons like AnkiHub put mw.web inside a splitter with a sidebar.
+        try:
+            from aqt.qt import QPoint
+            tl = mw.web.mapTo(host, QPoint(0, 0))
+            rx, ry, rw, rh = tl.x(), tl.y(), mw.web.width(), mw.web.height()
+            if rw < 50 or rh < 50:
+                raise ValueError
+        except Exception:
+            top = mw.toolbarWeb.height() if mw.toolbarWeb.isVisible() else 0
+            bottom = mw.bottomWeb.height() if mw.bottomWeb.isVisible() else 0
+            rx, ry, rw, rh = 0, top, host.width(), host.height() - top - bottom
+        x = rx + m if "left" in corner else rx + rw - w - m
+        y = ry + m if "top" in corner else ry + rh - h - m
         self.web.move(max(0, x), max(0, y))
         # too small to fit: hide rather than cover the reviewer
-        self.too_small = host.width() < w + 2 * m or host.height() < h + top + bottom + 2 * m
+        self.too_small = rw < w + 2 * m or rh < h + 2 * m
         self.web.setVisible(self._should_show())
         self.web.raise_()
 
@@ -197,7 +215,8 @@ class FlyWidget(QObject):
         enabled = bool(self.cfg.get("enabled", True)) and not self.closed_this_session
         in_review = mw.state == "review"
         home = mw.state == "deckBrowser"      # never on the home screen; it has the friends panel instead
-        return enabled and not getattr(self, "too_small", False) and not home and (in_review or bool(self.cfg.get("show_outside_review", True)))
+        return (enabled and not getattr(self, "too_small", False) and not getattr(self, "minimised_window", False)
+                and not home and (in_review or bool(self.cfg.get("show_outside_review", True))))
 
     @safe
     def update_visibility(self) -> None:
@@ -367,14 +386,14 @@ class FlyWidget(QObject):
                 os.makedirs(USER_FILES, exist_ok=True)
                 path = memory_path()
                 tmp = path + ".tmp"
-                with open(tmp, "w") as f:
+                with open(tmp, "w", encoding="utf-8") as f:
                     f.write(payload)
                 os.replace(tmp, path)
                 prog = json.loads(payload).get("progress")
                 if prog:
                     write_state(progress=prog)
-            except (OSError, ValueError):
-                pass
+            except (OSError, ValueError) as e:
+                log.warning("anki_fly: could not save memory: %s", e)
             return {"ok": True}
         if cmd == "fly:sex:toggle":
             cfg = get_config()

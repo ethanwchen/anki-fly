@@ -47,10 +47,15 @@ def collect_cards(search: str, limit: int = 2000) -> dict:
     col = mw.col
     now = time.time()
     today = col.sched.today
-    cids = col.find_cards(search)
+    cids = list(col.find_cards(search))
+    total = len(cids)
+    if len(cids) > limit:                        # a random (seeded) sample, not the oldest cards
+        import random
+        random.Random(len(cids)).shuffle(cids)
+        cids = cids[:limit]
     cards = []
     decay_cache: dict[int, float] = {}
-    for cid in cids[:limit]:
+    for cid in cids:
         try:
             c = col.get_card(cid)
         except Exception:
@@ -68,7 +73,14 @@ def collect_cards(search: str, limit: int = 2000) -> dict:
                 last_review = lr / 1000 if lr else None
             except Exception:
                 pass
-        elapsed = (now - last_review) / DAY_S if last_review else 0.0
+        if last_review:
+            elapsed = (now - last_review) / DAY_S
+        elif c.type == 2 and c.ivl > 0 and not c.odid:
+            elapsed = max(0.0, c.ivl - (c.due - today))          # no review log: infer from the schedule
+        else:
+            elapsed = 0.0
+            if c.type != 0:
+                ms = None                                        # nothing to date it by: fall back to the heuristic
         decay = getattr(c, "decay", None) or decay_cache[did]
         if c.type == 0:           # new card
             r, model = 0.0, "new"
@@ -87,12 +99,19 @@ def collect_cards(search: str, limit: int = 2000) -> dict:
             "cid": cid, "nid": int(c.nid), "front": _strip(front)[:80],
             "deck": col.decks.name(did), "type": c.type, "queue": c.queue,
             "ivl": c.ivl, "reps": c.reps, "lapses": c.lapses,
-            "due_days": (c.due - today) if c.type == 2 else None,
+            "due_days": (c.due - today) if (c.type == 2 and not c.odid) else None,
             "stability": stability, "difficulty": difficulty,
             "elapsed": elapsed, "r": r, "model": model,
             "desired_retention": getattr(c, "desired_retention", None),
         })
-    return {"cards": cards, "total_matching": len(cids), "search": search, "limit": limit}
+    return {"cards": cards, "total_matching": total, "search": search, "limit": limit}
+
+
+def _slim_memory(m: dict | None) -> dict | None:
+    """exam.js needs the synapse ratios and the note count, not the whole per-note map."""
+    if not m:
+        return None
+    return {"v": m.get("v"), "ratio": m.get("ratio"), "memory": {k: {} for k in (m.get("memory") or {})}}
 
 
 def _strip(html: str) -> str:
@@ -124,8 +143,8 @@ def study_pattern(cids: list[int]) -> dict:
     mature_secs = q(f"select avg(time) from revlog where {rated} and type = 1 and lastIvl >= 21 and id > ?", d90)
     young_easy = q(f"select sum(ease = 4), count() from revlog where {rated} and type = 1 and lastIvl < 21 and id > ?", d90)
     first_rev = q(f"select min(id) from revlog where {rated}")
-    overdue = col.db.scalar(f"select count() from cards where id in ({ids}) and queue = 2 and due < ?", col.sched.today)
-    review_cards = col.db.scalar(f"select count() from cards where id in ({ids}) and queue = 2")
+    overdue = col.db.scalar(f"select count() from cards where id in ({ids}) and queue = 2 and odid = 0 and due < ?", col.sched.today)
+    review_cards = col.db.scalar(f"select count() from cards where id in ({ids}) and queue = 2 and odid = 0")
     return {
         "reviews_total": total[0] or 0, "minutes_total": (total[1] or 0) / 60000, "again_total": total[2] or 0,
         "reviews_30d": r30[0] or 0, "minutes_30d": (r30[1] or 0) / 60000, "again_30d": r30[2] or 0, "easy_30d": r30[3] or 0,
@@ -272,20 +291,29 @@ def _open_exam_dialog() -> None:
     if setup.exec() != QDialog.DialogCode.Accepted:
         return
     search = setup.search()
-    data = collect_cards(search)
-    if not data["cards"]:
-        showInfo("No cards matched. The fly is relieved.")
-        return
-    cids = [c["cid"] for c in data["cards"]]
     from . import read_memory
-    payload = {
-        "cards": data["cards"], "total_matching": data["total_matching"], "search": search,
-        "pattern": study_pattern(cids), "desired_retention": desired_retention(data["cards"]),
-        "memory": read_memory(), "generated": time.time(),
-    }
-    dlg = ExamDialog(payload)
-    mw._anki_fly_exam = dlg
-    dlg.show()
+    from aqt.operations import QueryOp
+
+    def build(col) -> dict:
+        data = collect_cards(search)
+        if not data["cards"]:
+            return {}
+        cids = [c["cid"] for c in data["cards"]]
+        return {
+            "cards": data["cards"], "total_matching": data["total_matching"], "search": search,
+            "pattern": study_pattern(cids), "desired_retention": desired_retention(data["cards"]),
+            "memory": _slim_memory(read_memory()), "generated": time.time(),
+        }
+
+    def done(payload: dict) -> None:
+        if not payload:
+            showInfo("No cards matched. The fly is relieved.")
+            return
+        dlg = ExamDialog(payload)
+        mw._anki_fly_exam = dlg
+        dlg.show()
+
+    QueryOp(parent=mw, op=build, success=done).with_progress("The fly is reading your cards…").run_in_background()
 
 
 class WardrobeDialog(QDialog):

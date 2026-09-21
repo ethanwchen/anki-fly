@@ -1,0 +1,5 @@
+FlyWire FAFB v783 connectome (female fly data pack in this folder)
+Dorkenwald et al. 2024 (Nature) and Schlegel et al. 2024 (annotations), the FlyWire Consortium.
+Licensed under Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0):
+https://creativecommons.org/licenses/by-nc/4.0/  and  https://flywire.ai/tos
+This add-on is free and non-commercial. The pack is a derived subgraph (tools/extract_subgraph.py --dataset female).

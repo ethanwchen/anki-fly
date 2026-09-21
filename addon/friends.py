@@ -19,8 +19,8 @@ from . import get_config, read_state, write_state
 
 PKG = mw.addonManager.addonFromModule(__name__)
 HEARTBEAT_S = 30
-MOODS = {"study", "pressAgain", "pressHard", "pressGood", "pressEasy", "celebrate", "dance", "zoomies",
-         "crashout", "sulk", "sleepDesk", "still", "idle", "offline"}
+# Only coarse presence is shared, never anything derived from individual answers.
+PRESENCE = {"study", "idle", "offline"}
 MOCK_FRIENDS = [
     {"code": "K7Q2M9ZX", "name": "Gerald", "species": "wild", "costume": "sunglasses", "online": True, "mood": "study", "cardsPerMin": 4.2, "lastSeen": 0, "team": "BCM", "level": 14, "xp": 17200, "raceWins": 3, "joinedAt": 1780000000},
     {"code": "P3XW8AQ4", "name": "Pip", "species": "female", "costume": "partyhat", "online": True, "mood": "dance", "cardsPerMin": 6.1, "lastSeen": 0, "team": "UCLA", "level": 22, "xp": 45000, "raceWins": 7, "joinedAt": 1775000000},
@@ -38,19 +38,42 @@ class Friends:
         self.timer.timeout.connect(self.heartbeat)
         self.timer.start(HEARTBEAT_S * 1000)
         self._lock = threading.Lock()
+        self._reregistering = False
+        self._registering = False
 
     # ---- config / identity
     def server(self) -> str:
         return (get_config().get("friends_server") or "").strip().rstrip("/")
 
     def enabled(self) -> bool:
-        return bool(self.server())
+        srv = self.server()
+        # https only, except a local dev server or the built-in mock
+        return bool(srv) and (srv == "mock" or srv.startswith("https://") or srv.startswith("http://localhost") or srv.startswith("http://127.0.0.1"))
+
+    def consented(self) -> bool:
+        return bool(read_state().get("friends_consent"))
+
+    def ask_consent(self) -> bool:
+        from aqt.utils import askUser
+        if self.consented():
+            return True
+        ok = askUser(
+            "Turn on Fly race?\n\nYour fly gets a code you can share. While Anki is open, the add-on sends to the "
+            "friends server: your fly's name, team tag, costume, level, whether you are studying right now, and "
+            "how many cards and days you studied this week. Never card contents, deck names or individual answers. "
+            "You can hide fields in your profile and delete everything with Friends: leave.\n\nServer: "
+            + self.server(), title="Drosophil-Anki")
+        if ok:
+            write_state(friends_consent=True)
+        return ok
 
     def mock(self) -> bool:
         return self.server() == "mock"
 
     def identity(self) -> dict:
         st = read_state()
+        if st.get("friends_server") and st.get("friends_server") != self.server():
+            return {"token": None, "code": None}          # token belongs to a different server
         return {"token": st.get("friends_token"), "code": st.get("friends_code")}
 
     def profile(self) -> dict:
@@ -79,6 +102,8 @@ class Friends:
                 raise RuntimeError("not registered")
             headers["Authorization"] = f"Bearer {tok}"
         r = requests.request(method, self.server() + path, json=body, headers=headers, timeout=10)
+        if r.status_code == 401 and auth:
+            raise PermissionError("token rejected")
         r.raise_for_status()
         return r.json() if r.text else {}
 
@@ -91,17 +116,23 @@ class Friends:
                 res, err = None, str(e)[:200]
             def apply():
                 self.last_error = err
+                if err == "token rejected" and not self._reregistering:
+                    # the server no longer knows us (wiped / different deployment): register again once
+                    self._reregistering = True
+                    write_state(friends_token=None, friends_code=None)
+                    self.ensure_registered(lambda: setattr(self, "_reregistering", False))
+                    return
                 if done:
                     done(res)
             mw.taskman.run_on_main(apply)
         threading.Thread(target=run, daemon=True).start()
 
     def ensure_registered(self, then=None) -> None:
-        if not self.enabled():
+        if not self.enabled() or not self.consented():
             return
         if self.mock():
             if not self.identity()["code"]:
-                write_state(friends_code="MOCK1234", friends_token="mock", friends_joined=int(time.time()))
+                write_state(friends_code="MOCK1234", friends_token="mock", friends_joined=int(time.time()), friends_server="mock")
             if then:
                 then()
             return
@@ -109,36 +140,38 @@ class Friends:
             if then:
                 then()
             return
+        if self._registering:
+            return
+        self._registering = True
         def reg():
             return self._call("POST", "/v1/register", self.profile(), auth=False)
         def done(res):
+            self._registering = False
             if res and res.get("token") and res.get("code"):
-                write_state(friends_token=res["token"], friends_code=res["code"], friends_joined=int(time.time()))
+                write_state(friends_token=res["token"], friends_code=res["code"], friends_joined=int(time.time()), friends_server=self.server())
                 if then:
                     then()
         self._bg(reg, done)
 
     # ---- presence
     def set_mood(self, mood: str) -> None:
-        if mood in MOODS:
-            self.mood = mood
+        self.mood = "study" if mood in ("study", "pressAgain", "pressHard", "pressGood", "pressEasy", "celebrate", "dance", "zoomies", "crashout", "sulk") else "idle"
 
     def week_key(self) -> str:
-        y, w, _ = time.gmtime().tm_year, int(time.strftime("%V")), 0
-        return f"{time.strftime('%G')}-W{time.strftime('%V')}"
+        return time.strftime("%G-W%V", time.gmtime())          # ISO week in UTC, same as the server
 
     def week_stats(self) -> dict:
-        """Cards reviewed and days studied this ISO week (Monday, local rollover) from the review log."""
+        """Cards reviewed and days studied this ISO week (Monday 00:00 UTC, same bucket as the server)."""
         try:
             col = mw.col
             if not col:
                 return {"days": 0, "reviews": 0}
-            cutoff = col.sched.day_cutoff                      # next rollover, seconds
-            today_start = cutoff - 86400
-            weekday = time.localtime(today_start).tm_wday      # Monday = 0
-            week_start_ms = (today_start - weekday * 86400) * 1000
-            reviews = col.db.scalar("select count() from revlog where id > ? and ease > 0 and type in (0,1,2)", week_start_ms) or 0
-            days = col.db.scalar("select count(distinct (id/1000 - ?) / 86400) from revlog where id > ? and ease > 0", today_start - weekday * 86400, week_start_ms) or 0
+            now = int(time.time())
+            g = time.gmtime(now)
+            day_start = now - (g.tm_hour * 3600 + g.tm_min * 60 + g.tm_sec)
+            week_start = day_start - g.tm_wday * 86400
+            reviews = col.db.scalar("select count() from revlog where id > ? and ease > 0 and type in (0,1,2)", week_start * 1000) or 0
+            days = col.db.scalar("select count(distinct (id/1000 - ?) / 86400) from revlog where id > ? and ease > 0", week_start, week_start * 1000) or 0
             return {"days": int(days), "reviews": int(reviews)}
         except Exception:
             return {"days": 0, "reviews": 0}
@@ -149,7 +182,7 @@ class Friends:
             self.session["again"] += 1
 
     def heartbeat(self, offline: bool = False) -> None:
-        if not self.enabled():
+        if not self.enabled() or not self.consented():
             return
         if self.mock():
             self.friends = [dict(f) for f in MOCK_FRIENDS]
@@ -163,8 +196,9 @@ class Friends:
         mins = max(1 / 60, (time.time() - self.session["start"]) / 60)
         body = {**self.profile(), "mood": "offline" if offline else self.mood,
                 "cardsPerMin": round(self.session["cards"] / mins, 2),
-                "sessionCards": self.session["cards"], "sessionAgain": self.session["again"],
-                "race": {**self.week_stats(), "trueRetention": None}}
+                "sessionCards": self.session["cards"], "sessionAgain": self.session["again"]}
+        if mw.col:
+            body["race"] = {**self.week_stats(), "trueRetention": None}
         def done(res):
             if res and isinstance(res.get("friends"), list):
                 self.friends = res["friends"]
@@ -177,26 +211,34 @@ class Friends:
         by_code = {r.get("code"): r for r in res["standings"]}
         for f in self.friends:
             r = by_code.get(f.get("code")) or {}
-            f["weekReviews"], f["weekDays"] = int(r.get("reviews") or 0), int(r.get("days") or 0)
-        self._settle_week(res.get("week"))
+            f["weekReviews"] = None if r.get("reviews") is None else int(r["reviews"])
+            f["weekDays"] = None if r.get("days") is None else int(r["days"])
+        me = self.identity()["code"]
+        mine = by_code.get(me) or {}
+        self._settle_week(res.get("week"), int(mine.get("reviews") or 0))
 
-    def _settle_week(self, week: str | None) -> None:
+    def _settle_week(self, week: str | None, my_reviews: int) -> None:
         """When a new week starts, award a race win if we topped last week's cached standings."""
+        if not week or not mw.col:
+            return
         st = read_state()
         last = st.get("race_last") or {}
         me = self.identity()["code"]
-        if week and last.get("week") and last["week"] != week and len(last.get("rows") or []) > 1:
+        if last.get("week") and last["week"] != week and len(last.get("rows") or []) > 1:
             rows = sorted(last["rows"], key=lambda r: -(r.get("reviews") or 0))
             if rows and rows[0].get("code") == me and (rows[0].get("reviews") or 0) > 0:
                 write_state(race_wins=int(st.get("race_wins") or 0) + 1)
                 tooltip("Your fly won last week's race!", period=3000)
-        rows = [{"code": me, "reviews": self.week_stats()["reviews"]}] + [{"code": f.get("code"), "reviews": f.get("weekReviews") or 0} for f in self.friends]
-        write_state(race_last={"week": week, "rows": rows})
+        rows = [{"code": me, "reviews": my_reviews}] + [{"code": f.get("code"), "reviews": f.get("weekReviews") or 0} for f in self.friends]
+        if rows != last.get("rows") or week != last.get("week"):
+            write_state(race_last={"week": week, "rows": rows})
 
     # ---- friend management (menu)
     def show_code(self) -> None:
         if not self.enabled():
-            showInfo("Friends are off. Set `friends_server` in the add-on config (Tools → Add-ons → Config) to turn them on.")
+            showInfo("Friends are off. Set `friends_server` (an https:// URL) in the add-on config (Tools → Add-ons → Config) to turn them on.")
+            return
+        if not self.ask_consent():
             return
         def show():
             showInfo(f"Your fly code is:\n\n{self.identity()['code']}\n\nShare it with a friend; they add it under Tools → Drosophil-Anki → Add a friend.")
@@ -205,6 +247,8 @@ class Friends:
     def add_friend(self) -> None:
         if not self.enabled():
             self.show_code()
+            return
+        if not self.ask_consent():
             return
         code, ok = getText("Friend's fly code:", title="Drosophil-Anki")
         if not ok or not code.strip():
@@ -219,7 +263,8 @@ class Friends:
             if res and res.get("ok"):
                 tooltip(f"Added {res.get('friend', {}).get('name', code)}.")
                 self.heartbeat()
-                mw.deckBrowser.refresh()
+                if mw.col and mw.state == "deckBrowser":
+                    mw.deckBrowser.refresh()
             else:
                 showInfo("Could not add that code." + (f"\n\n{self.last_error}" if self.last_error else ""))
         self.ensure_registered(lambda: self._bg(lambda: self._call("POST", "/v1/friends", {"code": code}), done))
@@ -240,7 +285,7 @@ class Friends:
         if not askUser("Leave friends? Your fly code and friend list on the server are deleted."):
             return
         def done(_):
-            write_state(friends_token=None, friends_code=None)
+            write_state(friends_token=None, friends_code=None, friends_consent=False)
             self.friends = []
             tooltip("Left.")
             mw.deckBrowser.refresh()
@@ -253,6 +298,9 @@ class Friends:
     def panel_html(self) -> str:
         if not self.enabled():
             return ""
+        if not self.consented():
+            return ('<div style="margin:18px auto 0;max-width:720px;color:#888;font-size:13px">Fly race is available: '
+                    'Tools → Drosophil-Anki → Friends: show my fly code to turn it on.</div>')
         return (f'<div style="margin:18px auto 0;max-width:720px">'
                 f'<iframe id="flyfriends" src="/_addons/{PKG}/web/friends.html" '
                 f'style="width:100%;height:{60 + 52 * (1 + len(self.friends)) + 190}px;border:0;border-radius:12px;background:transparent" '
@@ -286,6 +334,9 @@ def setup() -> None:
 
     def on_js(handled, message: str, context):
         if not isinstance(message, str) or not message.startswith("flyfriends:"):
+            return handled
+        from aqt.deckbrowser import DeckBrowser
+        if not isinstance(context, DeckBrowser):      # never from card templates or other pages
             return handled
         cmd = message[len("flyfriends:"):]
         try:
