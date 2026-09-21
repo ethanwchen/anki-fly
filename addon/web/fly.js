@@ -61,6 +61,7 @@ const FACTS = [
   'Good = reward dopamine. Again = punishment dopamine.',
   'Dopamine rewires my synapses. That is how I learn.',
   'My wiring is from a real fly (MaleCNS 2026).',
+  'There is a female me too: a different real brain (FlyWire). Gear menu.',
   'Hover my brain to see what each dot is.',
   'Deep Focus in the gear menu if I get chatty.',
   'Tools → Drosophil-Anki → Sync to give me your history.',
@@ -87,9 +88,11 @@ class AnkiFly {
 
   async init() {
     const base = new URL('.', import.meta.url);
+    this.sex = new URLSearchParams(location.search).get('sex') === 'female' ? 'female' : 'male';
+    const dataDir = this.sex === 'female' ? 'data/female/' : 'data/';
     const [meta, gbuf] = await Promise.all([
-      fetch(new URL('data/meta.json', base)).then(r => r.json()),
-      fetch(new URL('data/graph.bin', base)).then(r => r.arrayBuffer()),
+      fetch(new URL(dataDir + 'meta.json', base)).then(r => r.json()),
+      fetch(new URL(dataDir + 'graph.bin', base)).then(r => r.arrayBuffer()),
     ]);
     this.meta = meta;
     this.g = meta.groups;
@@ -103,6 +106,7 @@ class AnkiFly {
     this.brain = new BrainView($('brain'), meta);
     this.sprite = await makeSprite($('fly'));
     if (this.sprite.setScene) this.sprite.setScene('study');
+    if (this.sprite.setSpecies) this.sprite.setSpecies(this.sex === 'female' ? 'female' : 'wild');
     this.brainTitle = `${meta.n.toLocaleString()} neurons · ${meta.nnz.toLocaleString()} synapses from MaleCNS v1.0`;
     $('brain').title = this.brainTitle + '. Hover a dot to see which neuron it is.';
     this.updateSession();
@@ -135,6 +139,7 @@ class AnkiFly {
     item('m-close', () => py('fly:close'));
     $('leech').onclick = (e) => { e.stopPropagation(); py('fly:leeches:' + this.leeches().join(',')); };
     item('m-rename', () => py('fly:rename'));
+    item('m-sex', () => py('fly:sex:toggle'));
     $('m-costume').onclick = (e) => { e.stopPropagation(); $('costumes').classList.toggle('open'); };
     $('m-smaller').onclick = (e) => { e.stopPropagation(); const w = Math.max(200, window.innerWidth - 40); py('fly:resize:' + w); py('fly:resized:' + w); };
     $('m-bigger').onclick = (e) => { e.stopPropagation(); const w = Math.min(900, window.innerWidth + 40); py('fly:resize:' + w); py('fly:resized:' + w); };
@@ -219,6 +224,7 @@ class AnkiFly {
         document.body.classList.toggle('mini', !!this.cfg.minimized);
         document.body.classList.toggle('focus', !!this.cfg.focus);
         this.name = (this.cfg.name || '').trim();
+        $('m-sex').firstElementChild.textContent = this.sex === 'female' ? 'Switch to male fly (MaleCNS brain)' : 'Switch to female fly (FlyWire brain)';
         $('fly').title = this.name ? `${this.name}, your study fly` : 'Your study fly';
         $('focus-on').textContent = this.cfg.focus ? '● on' : '';
         if (this.cfg.focus) { $('bubble').classList.remove('show'); this.setStatus(`deep focus · ${this.name || 'the fly'} is studying quietly`); }

@@ -208,7 +208,8 @@ class ExamDialog(QDialog):
         self.web.set_bridge_command(self.on_cmd, self)
         self.web.set_open_links_externally(False)
         self.payload = payload
-        self.web.load_url(QUrl(f"{mw.serverURL()}_addons/{PKG}/web/exam.html"))
+        from . import sex
+        self.web.load_url(QUrl(f"{mw.serverURL()}_addons/{PKG}/web/exam.html?sex={sex()}"))
         lay.addWidget(self.web)
 
     def on_cmd(self, cmd: str):

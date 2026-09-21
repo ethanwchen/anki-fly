@@ -19,7 +19,8 @@ from . import exam
 PKG = mw.addonManager.addonFromModule(__name__)
 ADDON_DIR = os.path.dirname(os.path.abspath(__file__))
 USER_FILES = os.path.join(ADDON_DIR, "user_files")
-MEMORY_PATH = os.path.join(USER_FILES, "memory.json")
+MEMORY_PATH = os.path.join(USER_FILES, "memory.json")            # male brain (MaleCNS)
+MEMORY_PATH_F = os.path.join(USER_FILES, "memory_female.json")   # female brain (FlyWire)
 STATE_PATH = os.path.join(USER_FILES, "state.json")   # runtime toggles (minimized, focus); config.json keeps the defaults
 MINI_SIZE = 44
 
@@ -72,12 +73,26 @@ def write_state(**kv) -> None:
         pass
 
 
+def sex() -> str:
+    return "female" if get_config().get("fly_sex") == "female" else "male"
+
+
+def memory_path() -> str:
+    return MEMORY_PATH_F if sex() == "female" else MEMORY_PATH
+
+
 def read_memory() -> dict | None:
     try:
-        with open(MEMORY_PATH) as f:
-            return json.load(f)
+        with open(memory_path()) as f:
+            data = json.load(f)
     except (OSError, ValueError):
-        return None
+        data = None
+    # costume progress is shared between the two brains (kept in state.json)
+    prog = read_state().get("progress")
+    if prog:
+        data = data or {"v": 1}
+        data["progress"] = prog
+    return data
 
 
 class FlyWidget(QObject):
@@ -96,7 +111,7 @@ class FlyWidget(QObject):
         self._apply_transparency()
         # AnkiWebPage refuses main-frame navigation to /_addons/ URLs unless this is off.
         self.web.set_open_links_externally(False)
-        self.web.load_url(QUrl(f"{mw.serverURL()}_addons/{PKG}/web/index.html"))
+        self.web.load_url(QUrl(f"{mw.serverURL()}_addons/{PKG}/web/index.html?sex={sex()}"))
         host.installEventFilter(self)
         mw.bottomWeb.installEventFilter(self)
         mw.toolbarWeb.installEventFilter(self)
@@ -149,6 +164,7 @@ class FlyWidget(QObject):
             "focus": self.focus,
             "pacing": bool(self.cfg.get("pacing_nudges", True)),
             "name": str(self.cfg.get("fly_name", "") or ""),
+            "sex": sex(),
             "width": int(self.cfg.get("width", 400)),
         }})
 
@@ -317,14 +333,26 @@ class FlyWidget(QObject):
             exam.open_exam_dialog()
             return {"ok": True}
         if cmd.startswith("fly:save:"):
+            payload = cmd[len("fly:save:"):]
             try:
                 os.makedirs(USER_FILES, exist_ok=True)
-                tmp = MEMORY_PATH + ".tmp"
+                path = memory_path()
+                tmp = path + ".tmp"
                 with open(tmp, "w") as f:
-                    f.write(cmd[len("fly:save:"):])
-                os.replace(tmp, MEMORY_PATH)
-            except OSError:
+                    f.write(payload)
+                os.replace(tmp, path)
+                prog = json.loads(payload).get("progress")
+                if prog:
+                    write_state(progress=prog)
+            except (OSError, ValueError):
                 pass
+            return {"ok": True}
+        if cmd == "fly:sex:toggle":
+            cfg = get_config()
+            cfg["fly_sex"] = "male" if sex() == "female" else "female"
+            write_config(cfg)
+            self.cfg = cfg
+            self.web.load_url(QUrl(f"{mw.serverURL()}_addons/{PKG}/web/index.html?sex={sex()}"))
             return {"ok": True}
         return None
 
@@ -409,10 +437,11 @@ def _amnesia(fly: FlyWidget) -> None:
     from aqt.utils import askUser, tooltip
     if not askUser("Wipe everything the fly has learned about your cards?"):
         return
-    try:
-        os.remove(MEMORY_PATH)
-    except OSError:
-        pass
+    for path in (MEMORY_PATH, MEMORY_PATH_F):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
     fly.send({"type": "amnesia"})
     tooltip("The fly stares blankly. It remembers nothing.")
 

@@ -24,7 +24,8 @@ import requests
 API = "https://neuprint-cns.janelia.org/api/custom/custom"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Per-dataset differences. Everything else (weights, APL scaling, open-loop silhouette, MIN_W) is shared.
+# Per-dataset differences. Everything else (W_UNIT weights, neuromodulator sign 0, no AL local neurons,
+# open-loop silhouette, MIN_W, sensory placement at partner centroid) is shared.
 DATASETS = {
     "male": {
         "dataset": "male-cns:v1.0",
@@ -78,7 +79,7 @@ OUT = CFG["out"]
 CACHE = CFG["cache"]
 MIN_W = 3
 W_UNIT = 0.275
-APL_SCALE = 0.5  # default; overridden per dataset via DATASETS[...]["apl_scale"]
+APL_SCALE = 0.5  # overridden per dataset via DATASETS[...]["apl_scale"]
 SIGN = {"acetylcholine": 1.0, "gaba": -1.0, "glutamate": -1.0, "dopamine": 0.0, "serotonin": 0.0, "octopamine": 0.0}
 NT_CODE = {"acetylcholine": "ACH", "gaba": "GABA", "glutamate": "GLUT", "dopamine": "DA", "serotonin": "SER", "octopamine": "OCT"}
 SILHOUETTE_N = 4000

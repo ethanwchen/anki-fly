@@ -4,6 +4,7 @@ A fruit fly whose brain is a real slice of the MaleCNS connectome, studying alon
 
 - `enabled`: show the fly.
 - `corner`: `bottom-right`, `bottom-left`, `top-right`, `top-left`.
+- `fly_sex`: `male` (MaleCNS brain) or `female` (FlyWire brain, a different real connectome). Each brain keeps its own memory file.
 - `fly_name`: your fly's name (also: gear menu → Name the fly).
 - `width`: widget width in pixels (height is always half); drag the top-left corner of the widget to resize. `margin`: distance from the corner.
 - `opacity`: 0–1.

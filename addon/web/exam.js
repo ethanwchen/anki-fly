@@ -16,6 +16,8 @@ const FLY_WEIGHT = 0.25; // share of the answer probability that comes from the 
 class Exam {
   async init() {
     const base = new URL('.', import.meta.url);
+    this.sex = new URLSearchParams(location.search).get('sex') === 'female' ? 'female' : 'male';
+    const dataDir = this.sex === 'female' ? 'data/female/' : 'data/';
     let spriteMod;
     try { if (!window.THREE) throw new Error('no three'); spriteMod = await import('./fly3d.js'); } catch { spriteMod = await import('./fly_sprite.js'); }
     const Sprite2D = (await import('./fly_sprite.js')).FlySprite;
@@ -29,8 +31,8 @@ class Exam {
       }
     };
     const [meta, gbuf] = await Promise.all([
-      fetch(new URL('data/meta.json', base)).then(r => r.json()),
-      fetch(new URL('data/graph.bin', base)).then(r => r.arrayBuffer()),
+      fetch(new URL(dataDir + 'meta.json', base)).then(r => r.json()),
+      fetch(new URL(dataDir + 'graph.bin', base)).then(r => r.arrayBuffer()),
     ]);
     this.meta = meta; this.g = meta.groups;
     this.sim = new Sim(parseGraph(gbuf));
@@ -41,6 +43,7 @@ class Exam {
     this.sprite = mk($('fly'));
     this.desk = !!this.sprite.setScene;
     if (this.desk) this.sprite.setScene('exam');
+    if (this.sprite.setSpecies) this.sprite.setSpecies(this.sex === 'female' ? 'female' : 'wild');
     this.sprite.setState(this.desk ? 'think' : 'idle');
     window.addEventListener('resize', () => { this.brain.resize(); this.sprite.resize(); });
     $('close').onclick = () => py('exam:close');

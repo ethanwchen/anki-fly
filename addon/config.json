@@ -1,6 +1,7 @@
 {
   "enabled": true,
   "fly_name": "",
+  "fly_sex": "male",
   "corner": "bottom-right",
   "width": 400,
   "height": 200,

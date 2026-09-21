@@ -33,6 +33,12 @@ The fly sits an exam on your deck:
   fly suggests a break (at most every 15 minutes; `pacing_nudges` in config).
 - **Sync with your history.** Tools → Drosophil-Anki → Sync replays your whole review log into the fly's
   synapses (aggregated per note), so a year of Anki becomes a year of fly memories in seconds.
+- **Name your fly, resize the widget** (drag the top-left grip or − / + size in the gear menu; the
+  ratio is locked so nothing distorts), **costumes** unlocked by studying (sunglasses at 100 cards,
+  party hat at 7 study days, cat ears at 500 cards, top hat at 30 days, crown for a 90% exam).
+- **Two real brains.** The default fly runs the male MaleCNS connectome; switch to the female fly and it
+  runs the FlyWire FAFB connectome instead (10,322 neurons in the pack, a genuinely different brain, with
+  its own memory file).
 - **Minimize / hide.** Hover the widget for `–` (collapse to a tiny fly) and `×` (hide for this
   session). `Ctrl+Shift+F` toggles it. Options in the add-on config.
 
@@ -73,5 +79,7 @@ JavaScript inside Anki's webview.
 ## Data & licenses
 
 - MaleCNS v1.0 connectome: CC BY 4.0, Janelia Research Campus / Google Research, via neuPrint.
+- FlyWire FAFB v783 connectome (female fly): CC BY-NC 4.0, Dorkenwald et al. 2024 / Schlegel et al. 2024. This
+  add-on is free and non-commercial.
 - Fly body mesh: `flybody` (Turaga Lab / Google DeepMind, Apache-2.0), see `addon/web/vendor/`.
 - three.js: MIT. Add-on code: MIT.
