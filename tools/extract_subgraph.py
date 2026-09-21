@@ -30,7 +30,7 @@ DATASETS = {
         "dataset": "male-cns:v1.0",
         "out": os.path.join(HERE, "..", "addon", "web", "data"),
         "cache": os.path.join(HERE, "cache"),
-        "source": CFG["source"], "dataset": DATASET,
+        "source": "MaleCNS v1.0 (Janelia FlyEM / Google Research), CC BY 4.0, via neuprint-cns.janelia.org",
         "nt_prop": "n.consensusNt",
         "central": "cb_intrinsic",                  # superclass of central-brain intrinsic neurons
         "silhouette_sc": ["cb_intrinsic", "visual_projection", "descending_neuron", "ol_intrinsic", "visual_centrifugal"],
@@ -38,6 +38,8 @@ DATASETS = {
         "grn_sugar": "n.flywireType = 'LB3' AND n.class = 'gustatory'",
         "mn": "n.type IN ['MN9','MN1','MN6']",
         "xyz_scale": (1, 1, 1),                     # somaLocation already in a uniform unit
+        "apl_scale": 0.5,                           # see APL_SCALE note below
+        "drop_autapses": False,                     # only 6 tiny self-edges in the male subgraph; kept as-is
         "fill_nt": {},                              # group -> NT used when the prediction is missing
         "force_nt": {},                             # group -> NT applied regardless of prediction
     },
@@ -53,6 +55,15 @@ DATASETS = {
         "grn_sugar": "n.type = 'LB3' AND n.class = 'gustatory'",   # subclass 'sugar/water'
         "mn": "n.type IN ['CB0701','CB0720','CB0858']",             # = MN9, MN1, MN6
         "xyz_scale": (4, 4, 40),                    # FAFB somaLocation is in 4x4x40 nm voxels -> nm
+        # Tuned like the male value: with self-edges dropped (below) APL_SCALE 0.5 leaves ~3% of KCs active and
+        # the MBONs silent, 0.25 gives ~10%; 0.35 gives ~6.5% KC activation per 6-glomerulus odor with clear
+        # MBON responses (tests/test_circuits_female.mjs).
+        "apl_scale": 0.35,
+        # The FlyWire import on neuprint-cns carries a ConnectsTo self-edge on essentially every neuron
+        # (154k of 168k neurons, weight ~5% of the cell's synapses: KC ~27, APL ~3000). These are synapse-
+        # detector self-contacts, not real autapses; a KC re-exciting itself by 7 mV per spike and an APL
+        # silencing itself by 850 mV make the mushroom body run away / go quiet, so they are dropped.
+        "drop_autapses": True,
         # FlyWire NT predictions on sensory axons and small DNs are patchy (38/122 sugar GRNs have none,
         # a few are called Glu/5-HT). Sugar GRNs are cholinergic (Gr5a/Gr64f), so the group is forced to ACh;
         # for the other groups only a missing prediction is filled with the known transmitter.
@@ -67,7 +78,7 @@ OUT = CFG["out"]
 CACHE = CFG["cache"]
 MIN_W = 3
 W_UNIT = 0.275
-APL_SCALE = 0.5
+APL_SCALE = 0.5  # default; overridden per dataset via DATASETS[...]["apl_scale"]
 SIGN = {"acetylcholine": 1.0, "gaba": -1.0, "glutamate": -1.0, "dopamine": 0.0, "serotonin": 0.0, "octopamine": 0.0}
 NT_CODE = {"acetylcholine": "ACH", "gaba": "GABA", "glutamate": "GLUT", "dopamine": "DA", "serotonin": "SER", "octopamine": "OCT"}
 SILHOUETTE_N = 4000
@@ -124,6 +135,8 @@ def main():
     CFG = DATASETS[args.dataset]; DATASET = CFG["dataset"]; OUT = CFG["out"]; CACHE = CFG["cache"]
     NODE_RETURN = node_return()
     CENTRAL = CFG["central"]
+    global APL_SCALE
+    APL_SCALE = CFG.get("apl_scale", APL_SCALE)
     print(f"dataset {DATASET} -> {os.path.relpath(OUT)}")
 
     groups = {}
@@ -218,6 +231,8 @@ def main():
             f"MATCH (a:Neuron)-[c:ConnectsTo]->(b:Neuron) WHERE a.bodyId IN {chunk} AND c.weight >= {MIN_W} "
             f"RETURN a.bodyId, b.bodyId, c.weight", f"edges_{MIN_W}_{hashlib.md5(str(chunk).encode()).hexdigest()[:10]}")
         for a, b, w in res["data"]:
+            if a == b and CFG["drop_autapses"]:
+                continue
             if b in index and a not in bg_ids:   # silhouette neurons are open-loop: driven by the circuit, never feed back
                 edges.append((index[a], index[b], w))
         print(f"  edges so far: {len(edges)}")
@@ -231,7 +246,7 @@ def main():
             pts = [sel[ids[j]]["xyz"] for j in downstream.get(i, []) if sel[ids[j]]["xyz"]]
             if pts:
                 cx = sum(p[0] for p in pts) / len(pts); cy = sum(p[1] for p in pts) / len(pts); cz = sum(p[2] for p in pts) / len(pts)
-                sel[b]["xyz"] = [cx + random.uniform(-1500, 1500), cy + random.uniform(-1500, 1500), cz]
+                j = 1500 * CFG["xyz_scale"][0]; sel[b]["xyz"] = [cx + random.uniform(-j, j), cy + random.uniform(-j, j), cz]
     orphan = [b for b in ids if sel[b]["xyz"] is None]
     for b in orphan:
         sel[b]["xyz"] = [0, 0, 0]

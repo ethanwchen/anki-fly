@@ -135,6 +135,7 @@ class Exam {
     }
     this.running = false;
     const sc = results.filter(r => r.correct).length / results.length;
+    if (results.filter(r => r.model !== 'new').length >= 20) py('exam:score:' + sc.toFixed(3));
     this.sprite.setState(this.desk ? (sc >= 0.8 ? 'celebrate' : 'think') : 'idle');
     $('phase').textContent = `Done in ${((performance.now() - t0) / 1000).toFixed(1)} s.`;
     this.report(results);

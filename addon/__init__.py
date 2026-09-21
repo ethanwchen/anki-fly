@@ -286,7 +286,7 @@ class FlyWidget(QObject):
             return {"ok": True}
         if cmd.startswith("fly:resize:") or cmd.startswith("fly:resized:"):
             try:
-                w = max(280, min(900, int(cmd.split(":")[2])))
+                w = max(200, min(900, int(cmd.split(":")[2])))
             except ValueError:
                 return None
             h = w // 2

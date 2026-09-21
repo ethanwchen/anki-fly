@@ -25,20 +25,23 @@
   #memrow { display: grid; grid-template-columns: 1fr auto; gap: 1.5rem; align-items: center; }
   #memory { height: 1.25rem; background: rgba(255,255,255,0.09); border-radius: .75rem; overflow: hidden; }
   #membar { height: 100%; width: 50%; transition: width .4s; border-radius: .75rem; }
-  #membar.neutral { background: #6b7280; } #membar.good { background: var(--good); } #membar.bad { background: var(--bad); }
+  #membar.neutral { background: #6b7280; } #membar.good { background: var(--good); } #membar.warn { background: var(--warn); }
   #memlabel { color: var(--ink2); font-size: 2.5rem; white-space: nowrap; }
   #foot { display: flex; align-items: end; justify-content: space-between; gap: 1.5rem; color: var(--ink3); font-size: 2.4rem; min-width: 0; padding-bottom: .5rem; line-height: 1.2; }
   #session { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #hz { white-space: nowrap; }
-  #leech { background: rgba(255,123,123,0.14); color: var(--bad); border: 0; border-radius: 1.25rem; padding: .25rem 1.5rem; font: inherit; font-size: 2.4rem; cursor: pointer; white-space: nowrap; }
-  #leech:hover { background: rgba(255,123,123,0.28); }
+  #leech { background: rgba(242,193,78,0.14); color: var(--warn); border: 0; border-radius: 1.25rem; padding: .25rem 1.5rem; font: inherit; font-size: 2.4rem; cursor: pointer; white-space: nowrap; }
+  #leech:hover { background: rgba(242,193,78,0.28); }
+  #costumes { display: none; flex-direction: column; padding-left: 2rem; } #costumes.open { display: flex; }
+  #costumes button[disabled] { opacity: .45; cursor: default; }
+  #sizes { display: flex; gap: .5rem; } #sizes button { flex: 1; justify-content: center; }
   /* gear + menu */
   #gear { position: absolute; top: 1.5rem; right: 2rem; width: 5.5rem; height: 5.5rem; border-radius: 1.5rem; border: 0; background: rgba(255,255,255,0.06);
     color: var(--ink2); cursor: pointer; font-size: 3.25rem; line-height: 5.5rem; padding: 0; opacity: .55; transition: opacity .15s, background .15s; }
   #panel:hover #gear, #gear:focus-visible { opacity: 1; }
   #gear:hover { background: rgba(255,255,255,0.16); color: #fff; }
   #menu { position: absolute; top: 7.5rem; right: 2rem; background: #1d2029; border: 1px solid var(--line); border-radius: 2.5rem; padding: 1rem;
-    box-shadow: 0 2rem 6rem rgba(0,0,0,0.45); display: none; flex-direction: column; min-width: 47.5rem; z-index: 5; }
+    box-shadow: 0 2rem 6rem rgba(0,0,0,0.45); display: none; flex-direction: column; min-width: 47.5rem; z-index: 5; max-height: calc(100% - 9rem); overflow-y: auto; }
   #menu.open { display: flex; }
   #menu button { background: none; border: 0; color: var(--ink); text-align: left; padding: 1.5rem 2rem; border-radius: 1.5rem; cursor: pointer; font: inherit;
     display: flex; justify-content: space-between; gap: 3rem; }
@@ -81,6 +84,10 @@
   <div id="menu" role="menu">
     <button id="m-focus" role="menuitem"><span>Deep Focus <span class="on" id="focus-on"></span></span><kbd>⌃⇧D</kbd></button>
     <button id="m-rename" role="menuitem"><span>Name the fly…</span></button>
+    <button id="m-costume" role="menuitem"><span>Costume ▸</span></button>
+    <div id="costumes"></div>
+    <div class="sep"></div>
+    <div id="sizes"><button id="m-smaller" title="Smaller">− size</button><button id="m-bigger" title="Bigger">+ size</button></div>
     <button id="m-exam" role="menuitem"><span>Fly Exam…</span><kbd>⌃⇧E</kbd></button>
     <button id="m-min" role="menuitem"><span>Minimize</span></button>
     <button id="m-close" role="menuitem"><span>Hide for now</span><kbd>⌃⇧F</kbd></button>

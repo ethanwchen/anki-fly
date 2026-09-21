@@ -224,6 +224,14 @@ class ExamDialog(QDialog):
                 return {"ok": True}
             self.web.eval(f"window.exam.start({json.dumps(self.payload)})")
             return {"ok": True}
+        if cmd.startswith("exam:score:"):
+            try:
+                fly = getattr(mw, "_anki_fly", None)
+                if fly:
+                    fly.send({"type": "examScore", "score": float(cmd.split(":")[2])})
+            except Exception:
+                pass
+            return {"ok": True}
         if cmd == "exam:close":
             self.close()
             return {"ok": True}

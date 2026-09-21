@@ -17,7 +17,7 @@ const GREEN = [120, 255, 140], RED = [255, 90, 90], YELLOW = [255, 220, 90];
 const VOICE = {
   newCard: ['new smell.', 'hm, new one.', 'never smelled this.', '*sniff*', 'first time?'],
   likedCard: ['oh, this one.', 'I know this.', 'easy one.', 'we like this.', 'seen it.'],
-  dreadCard: ['ugh. this one.', 'this one stings.', 'not again…', 'nervous.', 'we struggle here.'],
+  dreadCard: ['this one again. we got this.', 'tricky one. focus.', 'one more try.', 'we\'re learning this.', 'almost had it last time.'],
   seenCard: ['smelled this before.', 'familiar.', 'again? ok.', 'hm, I think I know it.'],
   good: ['sweet.', 'yes.', 'got it.', 'nice.', 'good good.', 'rewired.', 'tasty.'],
   easy: ['easy!', 'too easy.', 'ha.', 'more please.', 'yum.'],
@@ -44,6 +44,16 @@ const GROUP_WORDS = { KC: 'memory cell (Kenyon cell)', MBON: 'memory output neur
   LC4: 'looming detector', GF: 'giant fiber, escape', GRN_sugar: 'sugar taste neuron', GRN_interneurons: 'taste relay', MN_proboscis: 'proboscis muscle neuron',
   DNp09: 'walk command', DNg11: 'grooming command', MDN: 'back-up command', DNa01: 'turn command', DNa02: 'turn command', background: 'other brain neuron' };
 
+// Costume unlocks. Stats live in the fly's memory file: cards answered, distinct study days, best exam.
+const COSTUMES = [
+  { id: 'none', label: 'No costume', need: () => true, req: '' },
+  { id: 'sunglasses', label: 'Sunglasses', need: (st) => st.cards >= 100, req: '100 cards' },
+  { id: 'partyhat', label: 'Party hat', need: (st) => st.days >= 7, req: '7 study days' },
+  { id: 'catears', label: 'Cat ears', need: (st) => st.cards >= 500, req: '500 cards' },
+  { id: 'tophat', label: 'Top hat', need: (st) => st.days >= 30, req: '30 study days' },
+  { id: 'crown', label: 'Crown', need: (st) => st.bestExam >= 0.9 || st.cards >= 2000, req: 'an exam at 90% or 2,000 cards' },
+];
+
 const FACTS = [
   'I have 9,000 real neurons in here.',
   'Each card is a different smell to me.',
@@ -67,6 +77,7 @@ class AnkiFly {
     this.state = 'idle';
     this.forcedState = null; // {state, until}
     this.stats = { spikes: 0, reviews: 0 };
+    this.progress = { cards: 0, days: [], bestExam: 0, costume: 'none' };   // unlock progress, persisted
     this.memory = {};   // nid -> {approach, avoid, seen}
     this.dirty = false;
     this.session = { cards: 0, again: 0, synapses: 0, start: performance.now() };
@@ -97,6 +108,7 @@ class AnkiFly {
     this.updateSession();
     window.addEventListener('resize', () => { try { this.brain.resize(); this.sprite.resize(); } catch (e) { console.warn(e); } });
     this.wireControls();
+    this.renderCostumeMenu();
     this.lastFrame = performance.now();
     requestAnimationFrame((t) => this.frame(t));
     // background tonic drive so the brain is never fully silent (spontaneous activity)
@@ -123,6 +135,9 @@ class AnkiFly {
     item('m-close', () => py('fly:close'));
     $('leech').onclick = (e) => { e.stopPropagation(); py('fly:leeches:' + this.leeches().join(',')); };
     item('m-rename', () => py('fly:rename'));
+    $('m-costume').onclick = (e) => { e.stopPropagation(); $('costumes').classList.toggle('open'); };
+    $('m-smaller').onclick = (e) => { e.stopPropagation(); const w = Math.max(200, window.innerWidth - 40); py('fly:resize:' + w); py('fly:resized:' + w); };
+    $('m-bigger').onclick = (e) => { e.stopPropagation(); const w = Math.min(900, window.innerWidth + 40); py('fly:resize:' + w); py('fly:resized:' + w); };
     // resize grip: the widget grows toward the top-left; Python keeps the 2:1 ratio and repositions
     const grip = $('grip');
     grip.addEventListener('pointerdown', (e) => {
@@ -130,7 +145,7 @@ class AnkiFly {
       try { grip.setPointerCapture(e.pointerId); } catch {}
       const startX = e.screenX, startW = window.innerWidth;
       let last = 0, w = startW;
-      const move = (ev) => { w = Math.round(Math.max(280, Math.min(900, startW + (startX - ev.screenX)))); const t = performance.now(); if (t - last > 40) { last = t; py('fly:resize:' + w); } };
+      const move = (ev) => { w = Math.round(Math.max(200, Math.min(900, startW + (startX - ev.screenX)))); const t = performance.now(); if (t - last > 40) { last = t; py('fly:resize:' + w); } };
       const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); py('fly:resized:' + w); };
       window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     });
@@ -225,7 +240,7 @@ class AnkiFly {
         this.updateMemoryBar();
         const m = this.memory[this.currentNid];
         const who = this.name || 'the fly';
-        const feel = !m ? `new to ${who}` : this.pref(m) > 0.3 ? `${who} likes this one` : this.pref(m) < -0.3 ? `${who} dreads this one` : `${who} has seen this ${m.seen}×`;
+        const feel = !m ? `new to ${who}` : this.pref(m) > 0.3 ? `${who} knows this one` : this.pref(m) < -0.3 ? `${who} is still learning this one` : `${who} has seen this ${m.seen}×`;
         this.setStatus(`sniffing this card · ${feel}`, false, `odor = glomeruli ${this.currentOdor.join(' ')} (from the note id)`);
         this.maybeSay(!m ? 'newCard' : this.pref(m) > 0.3 ? 'likedCard' : this.pref(m) < -0.3 ? 'dreadCard' : 'seenCard', {}, { every: 4 });
         break;
@@ -238,6 +253,7 @@ class AnkiFly {
         this.stats.reviews++;
         const kcActive = g.KC.filter(i => sim.elig[i] > 0.2);
         this.session.cards++;
+        this.bump();
         const secs = ev.ms ? (ev.ms / 1000).toFixed(0) + 's' : '';
         this.pacing(ease, ev.ms || 0);
         // mood: recent run of answers
@@ -303,6 +319,9 @@ class AnkiFly {
       }
       case 'loadMemory':
         this.loadMemory(ev.data);
+        break;
+      case 'examScore':
+        if (ev.score > (this.progress.bestExam || 0)) { this.progress.bestExam = ev.score; this.dirty = true; this.bump(); this.progress.cards--; }
         break;
       case 'sync':
         this.syncHistory(ev.notes, ev.reviews);
@@ -438,8 +457,39 @@ class AnkiFly {
     if (!m) { bar.style.width = '50%'; bar.className = 'neutral'; lab.textContent = 'new card'; return; }
     const pref = this.pref(m);
     bar.style.width = `${50 + pref * 50}%`;
-    bar.className = pref > 0.05 ? 'good' : (pref < -0.05 ? 'bad' : 'neutral');
-    lab.textContent = `fly memory · seen ${m.seen}× · ${pref > 0.3 ? 'likes it' : pref < -0.3 ? 'dreads it' : 'unsure'}`;
+    bar.className = pref > 0.05 ? 'good' : (pref < -0.05 ? 'warn' : 'neutral');
+    lab.textContent = `fly memory · seen ${m.seen}× · ${pref > 0.3 ? 'knows it' : pref < -0.3 ? 'still learning' : 'getting there'}`;
+  }
+
+  // ---------- progress & costumes ----------
+  progressStats() { return { cards: this.progress.cards, days: this.progress.days.length, bestExam: this.progress.bestExam }; }
+
+  bump() {
+    const p = this.progress;
+    p.cards++;
+    const today = new Date().toISOString().slice(0, 10);
+    if (!p.days.includes(today)) { p.days.push(today); if (p.days.length > 4000) p.days.shift(); }
+    this.dirty = true;
+    const before = this.unlocked; this.unlocked = COSTUMES.filter(c => c.need(this.progressStats())).map(c => c.id);
+    const fresh = before ? this.unlocked.filter(id => !before.includes(id) && id !== 'none') : [];
+    if (fresh.length) { const c = COSTUMES.find(x => x.id === fresh[0]); this.say(`unlocked: ${c.label}! (gear menu)`, 7000); this.force('celebrate', 900); }
+    this.renderCostumeMenu();
+  }
+
+  setCostume(id) {
+    const c = COSTUMES.find(x => x.id === id);
+    if (!c || !c.need(this.progressStats())) return;
+    this.progress.costume = id; this.dirty = true;
+    if (this.sprite.setCostume) this.sprite.setCostume(id);
+    this.renderCostumeMenu();
+  }
+
+  renderCostumeMenu() {
+    const box = $('costumes'); if (!box) return;
+    const st = this.progressStats();
+    box.innerHTML = COSTUMES.map(c => { const ok = c.need(st); const on = this.progress.costume === c.id;
+      return `<button data-c="${c.id}" ${ok ? '' : 'disabled'} title="${ok ? '' : 'unlock: ' + c.req}"><span>${on ? '● ' : ''}${c.label}</span><kbd>${ok ? '' : c.req}</kbd></button>`; }).join('');
+    box.querySelectorAll('button[data-c]').forEach(b => b.onclick = (e) => { e.stopPropagation(); this.setCostume(b.dataset.c); });
   }
 
   // ---------- session pacing (fatigue signal) ----------
@@ -474,9 +524,9 @@ class AnkiFly {
   leechCheck() {
     const l = this.leeches();
     $('leech').hidden = l.length === 0;
-    $('leech').textContent = `${l.length} dreaded`;
-    $('leech').title = 'cards the fly dreads: probably your leeches. Click to open them in the browser.';
-    if (l.length >= 3 && l.length !== this.lastLeechCount && !this.cfg.focus) { this.lastLeechCount = l.length; this.say(`${l.length} cards keep stinging me. click "dreaded" to see them.`, 7000); }
+    $('leech').textContent = `${l.length} to revisit`;
+    $('leech').title = 'cards the fly is still learning after several tries. Click to open them in the browser; splitting or rewriting them usually helps.';
+    if (l.length >= 3 && l.length !== this.lastLeechCount && !this.cfg.focus) { this.lastLeechCount = l.length; this.say(`${l.length} cards we're still learning. click "to revisit" to see them.`, 7000); }
   }
 
   // ---------- history replay ----------
@@ -518,7 +568,7 @@ class AnkiFly {
   _save() {
     const P = this.sim.plastic, w = [];
     for (let k = 0; k < P.edgeIdx.length; k++) w.push(+ (this.sim.w[P.edgeIdx[k]] / this.sim.w0[P.edgeIdx[k]]).toFixed(3));
-    py('fly:save:' + JSON.stringify({ v: 1, ratio: w, memory: this.memory, stats: this.stats, streak: this.streak }));
+    py('fly:save:' + JSON.stringify({ v: 1, ratio: w, memory: this.memory, stats: this.stats, streak: this.streak, progress: this.progress }));
     this.dirty = false;
   }
   loadMemory(data) {
@@ -530,6 +580,10 @@ class AnkiFly {
     this.memory = data.memory || {};
     this.stats = data.stats || this.stats;
     this.streak = data.streak || 0;
+    if (data.progress) this.progress = { ...this.progress, ...data.progress, days: data.progress.days || [] };
+    this.unlocked = COSTUMES.filter(c => c.need(this.progressStats())).map(c => c.id);
+    if (this.sprite.setCostume) this.sprite.setCostume(this.progress.costume || 'none');
+    this.renderCostumeMenu();
     this.setStatus(`${this.name || 'the fly'} remembers ${Object.keys(this.memory).length} of your cards`);
     this.updateSession();
     this.leechCheck();

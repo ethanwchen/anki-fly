@@ -4,6 +4,7 @@
 //         study, pressAgain, pressHard, pressGood, pressEasy, celebrate, dance, zoomies, crashout, sulk, sleepDesk, still (scene 'study')
 //         think, write, sleepDesk, still (scene 'exam'); setScene('study'|'exam'|null)
 // Species/variants (materials + vertex colours only): setSpecies('wild'|'white'|'ebony'|'yellow'|'female'), getSpecies()
+// Costumes (procedural props parented to the head): setCostume('none'|'sunglasses'|'tophat'|'catears'|'partyhat'|'crown'), getCostume()
 //
 // Geometry: anatomically detailed Drosophila body from TuragaLab/flybody (Apache-2.0),
 // decimated and baked into vendor/fly.bin (see vendor/LICENSE-flybody.txt). The MuJoCo
@@ -265,6 +266,87 @@ export class FlySprite {
     if (this.sceneName) this.layout();
   }
 
+  // ---------- costumes ----------
+  // Head-local unit vectors for world-up, fly-forward and fly-right in the rest pose, plus head extents along them.
+  headBasis() {
+    this.mover.rotation.y = 0; this.lift.rotation.set(0, 0, 0); this.mover.updateWorldMatrix(true, true);
+    const head = this.byName.head, qi = head.getWorldQuaternion(new THREE.Quaternion()).invert();
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(qi).normalize();
+    const fwd = new THREE.Vector3(1, 0, 0).applyQuaternion(qi).normalize();   // world +x = fly forward at yaw 0
+    const right = new THREE.Vector3().crossVectors(fwd, up).normalize();
+    const P = this.headPos, c = new THREE.Vector3(), q = new THREE.Vector3();
+    let n = 0; for (let i = 0; i < P.length; i += 3) { c.x += P[i]; c.y += P[i + 1]; c.z += P[i + 2]; n++; } c.divideScalar(n);
+    let upMax = -1e9, fwdMax = -1e9, rMax = 0;
+    for (let i = 0; i < P.length; i += 3) { q.set(P[i], P[i + 1], P[i + 2]).sub(c); upMax = Math.max(upMax, q.dot(up)); fwdMax = Math.max(fwdMax, q.dot(fwd)); rMax = Math.max(rMax, Math.abs(q.dot(right))); }
+    const m = new THREE.Matrix4().makeBasis(right, fwd, up);   // costume space: x = right, y = forward, z = up
+    this.head = { c, up, fwd, right, upMax, fwdMax, halfW: rMax, quat: new THREE.Quaternion().setFromRotationMatrix(m) };
+    const E = this.eyeCenters.map(e => e.clone().sub(c)).map(e => new THREE.Vector3(e.dot(right), e.dot(fwd), e.dot(up)));
+    this.head.eyes = E;
+  }
+  setCostume(name) {
+    name = name || 'none';
+    this.costume = name;
+    if (!this.ready) return;
+    if (this.costumeGroup) { this.costumeGroup.parent.remove(this.costumeGroup); this.costumeGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); this.costumeGroup = null; }
+    if (name === 'none') { this.needsRender = true; return; }
+    const G = this.costumeGroup = new THREE.Group(); this.byName.head.add(G);
+    const H = this.head; G.position.copy(H.c); G.quaternion.copy(H.quat);   // costume space: x = right, y = forward, z = up, origin = head centre
+    const W = H.halfW * 2, top = new THREE.Vector3(0, -W * 0.05, H.upMax * 0.92);
+    const std = (c, extra = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.6 }, extra));
+    if (name === 'sunglasses') {
+      const lensMat = new THREE.MeshPhysicalMaterial({ color: 0x0a0c12, roughness: 0.12, clearcoat: 1, transparent: true, opacity: 0.88 });
+      const frame = std(0x1a1a1a, { metalness: 0.4, roughness: 0.4 });
+      const E = H.eyes, r = W * 0.27;
+      for (const c of E) {
+        const lens = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), lensMat);
+        lens.position.copy(c); lens.position.y += r * 0.55; lens.scale.set(1, 0.45, 0.9); G.add(lens);
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.95, r * 0.08, 6, 24), frame);
+        rim.position.copy(lens.position); rim.rotation.x = Math.PI / 2; G.add(rim);
+      }
+      const bridge = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.08, r * 0.08, Math.abs(E[0].x - E[1].x) * 0.5, 6), frame);
+      bridge.rotation.z = Math.PI / 2; bridge.position.set((E[0].x + E[1].x) / 2, (E[0].y + E[1].y) / 2 + r * 0.9, (E[0].z + E[1].z) / 2 + r * 0.35); G.add(bridge);
+    } else if (name === 'tophat') {
+      const mat = std(0x15121a, { roughness: 0.5 });
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.62, W * 0.62, W * 0.05, 28), mat);
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.36, W * 0.4, W * 0.6, 28), mat);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.405, W * 0.405, W * 0.1, 28), std(0x8b1d24));
+      brim.position.z = 0; crown.position.z = W * 0.3; band.position.z = W * 0.08;
+      const hat = new THREE.Group(); hat.add(brim, crown, band); hat.children.forEach(m => { m.rotation.x = Math.PI / 2; });
+      hat.position.copy(top); hat.position.z += W * 0.02; hat.rotation.x = 0.15; hat.rotation.y = -0.12; G.add(hat);
+    } else if (name === 'catears') {
+      const fur = std(0x2b2420, { roughness: 0.9 }), inner = std(0xe98ea6, { roughness: 0.9 });
+      for (const sgn of [-1, 1]) {
+        const ear = new THREE.Group();
+        const outer = new THREE.Mesh(new THREE.ConeGeometry(W * 0.16, W * 0.42, 4), fur);
+        const pink = new THREE.Mesh(new THREE.ConeGeometry(W * 0.09, W * 0.26, 4), inner); pink.position.set(0, -W * 0.02, W * 0.02);
+        outer.rotation.y = Math.PI / 4; pink.rotation.y = Math.PI / 4;
+        ear.add(outer, pink); ear.rotation.x = Math.PI / 2; ear.rotation.z = -sgn * 0.35;   // cone +y -> head +z, tilted outward
+        ear.position.set(top.x + sgn * W * 0.3, top.y - W * 0.05, top.z + W * 0.12); G.add(ear);
+      }
+    } else if (name === 'partyhat') {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(W * 0.3, W * 0.85, 24, 1), std(0x3b7ddd, { roughness: 0.5 }));
+      cone.rotation.x = Math.PI / 2; cone.position.z = W * 0.42;
+      const stripe = new THREE.Mesh(new THREE.ConeGeometry(W * 0.19, W * 0.54, 24, 1, true), std(0xf2c94c, { roughness: 0.5 }));
+      stripe.rotation.x = Math.PI / 2; stripe.position.z = W * 0.42 + W * 0.155; stripe.scale.setScalar(1.01);
+      const pom = new THREE.Mesh(new THREE.SphereGeometry(W * 0.09, 12, 10), std(0xf25f5c, { roughness: 0.9 })); pom.position.z = W * 0.86;
+      const hat = new THREE.Group(); hat.add(cone, stripe, pom); hat.position.copy(top); hat.rotation.x = 0.25; hat.rotation.y = 0.2; G.add(hat);
+    } else if (name === 'crown') {
+      const gold = std(0xd4a53a, { metalness: 0.85, roughness: 0.3 });
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(W * 0.38, W * 0.4, W * 0.16, 24, 1, true), gold);
+      ring.material = gold.clone(); ring.material.side = THREE.DoubleSide; ring.rotation.x = Math.PI / 2; ring.position.z = W * 0.08;
+      const hat = new THREE.Group(); hat.add(ring);
+      for (let i = 0; i < 6; i++) {
+        const a = i / 6 * TAU, pk = new THREE.Mesh(new THREE.ConeGeometry(W * 0.07, W * 0.2, 4), gold);
+        pk.rotation.x = Math.PI / 2; pk.position.set(Math.cos(a) * W * 0.38, Math.sin(a) * W * 0.38, W * 0.24); hat.add(pk);
+        const gem = new THREE.Mesh(new THREE.SphereGeometry(W * 0.035, 8, 6), std([0xd6336c, 0x2f9e44, 0x1c7ed6][i % 3], { roughness: 0.2 }));
+        gem.position.set(Math.cos(a + 0.5) * W * 0.4, Math.sin(a + 0.5) * W * 0.4, W * 0.08); hat.add(gem);
+      }
+      hat.position.copy(top); hat.position.z -= W * 0.02; hat.rotation.x = 0.1; G.add(hat);
+    }
+    this.needsRender = true;
+  }
+  getCostume() { return this.costume || 'none'; }
+
   // stage frame: x = fly forward, z = fly right, y up; desk top is y = 0
   buildStudy() {
     const G = this.sceneGroup = new THREE.Group(); this.stage.add(G);
@@ -469,6 +551,7 @@ export class FlySprite {
         mat = p.mat === 'lower' ? M.lowerVC : M.bodyVC;
       }
       if (p.mat === 'red') { this.eyeUVs(g); }
+      if (p.mat === 'body' && B[p.body].name === 'head') this.headPos = p.pos;
       g.computeVertexNormals();
       const mesh = new THREE.Mesh(g, mat);
       if (p.col && B[p.body].name.startsWith('abdomen')) { this.abdParts = this.abdParts || []; this.abdParts.push({ mesh, body: p.body, mat: p.mat, col0: p.col }); }
@@ -512,6 +595,8 @@ export class FlySprite {
     B.forEach((b, i) => { if (b.parent >= 0 && B[b.parent].name.startsWith('abdomen')) this.abdLen[B[b.parent].name] = Math.hypot(...b.pos); });
     this.abdLen.abdomen_7 = 0.03;
     this.applySpecies(this.species || 'wild');
+    this.headBasis();
+    if (this.costume) this.setCostume(this.costume);
     this.ready = true;
     this.layout();
   }
@@ -528,6 +613,7 @@ export class FlySprite {
     const sideOf = (i) => A[i * 3 + ax] > cc ? 1 : 0;
     for (let i = 0; i < n; i++) { const s = sideOf(i); cen[s].x += P.getX(i); cen[s].y += P.getY(i); cen[s].z += P.getZ(i); cnt[s]++; }
     cen.forEach((v, k) => v.divideScalar(Math.max(1, cnt[k])));
+    this.eyeCenters = cen; this.eyeAxis = ax;
     const d = new THREE.Vector3();
     for (let i = 0; i < n; i++) {
       const s = sideOf(i);
