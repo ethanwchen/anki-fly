@@ -250,14 +250,26 @@ class Friends:
             return
         if not self.ask_consent():
             return
-        code, ok = getText("Friend's fly code:", title="Drosophil-Anki")
-        if not ok or not code.strip():
-            return
-        code = code.strip().upper()
+        # First time through there is no code yet: register, then show it in the prompt so it can be
+        # shared, and let the user skip entering a friend's code.
+        def ask() -> None:
+            mine = self.identity()["code"] or "…"
+            code, ok = getText(
+                f"Your fly code is {mine}. Share it with a friend.\n\nFriend's fly code (leave empty to skip):",
+                title="Drosophil-Anki")
+            if ok and code.strip():
+                self._do_add(code.strip().upper())
+        if self.identity()["code"]:
+            ask()
+        else:
+            self.ensure_registered(lambda: mw.progress.single_shot(0, ask))
+
+    def _do_add(self, code: str) -> None:
         if self.mock():
             self.friends.append({"code": code, "name": "New friend", "species": "wild", "costume": "none", "online": False, "mood": "offline", "cardsPerMin": 0, "lastSeen": 0})
             tooltip("Friend added (mock).")
-            mw.deckBrowser.refresh()
+            if mw.col and mw.state == "deckBrowser":
+                mw.deckBrowser.refresh()
             return
         def done(res):
             if res and res.get("ok"):
@@ -266,7 +278,8 @@ class Friends:
                 if mw.col and mw.state == "deckBrowser":
                     mw.deckBrowser.refresh()
             else:
-                showInfo("Could not add that code." + (f"\n\n{self.last_error}" if self.last_error else ""))
+                showInfo("Could not add that code. Check it with your friend; codes are 8 characters."
+                         + (f"\n\n{self.last_error}" if self.last_error else ""))
         self.ensure_registered(lambda: self._bg(lambda: self._call("POST", "/v1/friends", {"code": code}), done))
 
     def remove_friend(self, code: str) -> None:
@@ -342,10 +355,11 @@ def setup() -> None:
                 return (True, fr.snapshot())
             if cmd == "add":
                 if not fr.enabled():
-                    showInfo("Friends need a friends server. Deploy the one in the add-on's GitHub repo (backend/), then put its "
-                             "https URL in Tools → Add-ons → Drosophil-Anki → Config as friends_server.")
+                    mw.progress.single_shot(0, lambda: showInfo(
+                        "Friends need a friends server. Deploy the one in the add-on's GitHub repo (backend/), then put its "
+                        "https URL in Tools → Add-ons → Drosophil-Anki → Config as friends_server."))
                 else:
-                    fr.add_friend()
+                    mw.progress.single_shot(0, fr.add_friend)
             elif cmd.startswith("remove:"):
                 fr.remove_friend(cmd[7:])
                 return (True, fr.snapshot())
@@ -353,7 +367,7 @@ def setup() -> None:
                 fr.set_hidden([h for h in cmd[5:].split(",") if h])
                 return (True, fr.snapshot())
             elif cmd == "code":
-                fr.show_code()
+                mw.progress.single_shot(0, fr.show_code)
         except Exception:
             pass
         return (True, None)
@@ -362,4 +376,14 @@ def setup() -> None:
     gui_hooks.profile_will_close.append(lambda: fr.heartbeat(offline=True))
     gui_hooks.profile_did_open.append(lambda: fr.ensure_registered(fr.heartbeat))
     fr.ensure_registered(fr.heartbeat)   # the profile is already open when add-ons finish loading
+
+    def show_panel_now() -> None:
+        # The deck list is rendered before add-ons finish loading, so our hook misses the first paint.
+        try:
+            if mw.col and mw.state == "deckBrowser":
+                mw.deckBrowser.refresh()
+        except Exception:
+            pass
+    mw.progress.single_shot(300, show_panel_now)
+    gui_hooks.profile_did_open.append(lambda: mw.progress.single_shot(300, show_panel_now))
     return fr
