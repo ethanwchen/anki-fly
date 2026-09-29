@@ -40,6 +40,9 @@ class Friends:
         self._lock = threading.Lock()
         self._reregistering = False
         self._registering = False
+        self._beating = False          # a heartbeat is in flight
+        self._fails = 0                # consecutive network failures (backs the heartbeat off)
+        self._skip = 0                 # heartbeats to skip while backing off
 
     # ---- config / identity
     def server(self) -> str:
@@ -153,6 +156,9 @@ class Friends:
                     then()
         self._bg(reg, done)
 
+    def reset_session(self) -> None:
+        self.session = {"cards": 0, "again": 0, "start": time.time()}
+
     # ---- presence
     def set_mood(self, mood: str) -> None:
         self.mood = "study" if mood in ("study", "pressAgain", "pressHard", "pressGood", "pressEasy", "celebrate", "dance", "zoomies", "crashout", "sulk") else "idle"
@@ -184,6 +190,11 @@ class Friends:
     def heartbeat(self, offline: bool = False) -> None:
         if not self.enabled() or not self.consented():
             return
+        if self._beating and not offline:
+            return                      # previous heartbeat still in flight (slow or dead network)
+        if self._skip > 0 and not offline:
+            self._skip -= 1
+            return
         if self.mock():
             self.friends = [dict(f) for f in MOCK_FRIENDS]
             for i, f in enumerate(self.friends):
@@ -200,9 +211,16 @@ class Friends:
         if mw.col:
             body["race"] = {**self.week_stats(), "trueRetention": None}
         def done(res):
+            self._beating = False
             if res and isinstance(res.get("friends"), list):
+                self._fails = 0
                 self.friends = res["friends"]
                 self._bg(lambda: self._call("GET", f"/v1/race?week={self.week_key()}"), self._apply_race)
+            elif self.last_error:
+                # 30 s, then 1, 2, 4… minutes up to ~8, so a dead network doesn't mean a request every 30 s
+                self._fails = min(self._fails + 1, 5)
+                self._skip = 2 ** (self._fails - 1)
+        self._beating = True
         self._bg(lambda: self._call("POST", "/v1/heartbeat", body), done)
 
     def _apply_race(self, res) -> None:
@@ -329,10 +347,16 @@ class Friends:
         me["joinedAt"] = read_state().get("friends_joined") or 0
         # friends: presence and weekly totals only; their moods/answers stay private
         friends = [{k: f.get(k) for k in ("code", "name", "species", "costume", "online", "lastSeen", "weekReviews", "weekDays", "team", "level", "xp", "raceWins", "joinedAt")} for f in self.friends]
-        return {"me": me, "friends": friends, "week": self.week_key(), "error": self.last_error, "mock": self.mock(), "now": time.time()}
+        return {"me": me, "friends": friends, "week": self.week_key(), "error": self.last_error,
+                "offline": bool(self.last_error) and (self._fails > 0 or not self.identity()["code"]),
+                "mock": self.mock(), "now": time.time()}
 
 
 def setup() -> None:
+    """Called at add-on import time: hooks must be registered before Anki paints the deck list."""
+    fr = getattr(mw, "_anki_fly_friends", None)
+    if fr:
+        return fr
     fr = Friends()
     mw._anki_fly_friends = fr
 
@@ -374,16 +398,21 @@ def setup() -> None:
     gui_hooks.webview_did_receive_js_message.append(on_js)
 
     gui_hooks.profile_will_close.append(lambda: fr.heartbeat(offline=True))
-    gui_hooks.profile_did_open.append(lambda: fr.ensure_registered(fr.heartbeat))
-    fr.ensure_registered(fr.heartbeat)   # the profile is already open when add-ons finish loading
+
+    def on_profile_open() -> None:
+        fr.reset_session()
+        fr.ensure_registered(fr.heartbeat)
+        mw.progress.single_shot(300, show_panel_now)
+    gui_hooks.profile_did_open.append(on_profile_open)
 
     def show_panel_now() -> None:
-        # The deck list is rendered before add-ons finish loading, so our hook misses the first paint.
+        """Belt and braces: if anything still rendered the deck list without us, redraw it once."""
         try:
-            if mw.col and mw.state == "deckBrowser":
+            if mw.col and mw.state == "deckBrowser" and mw.deckBrowser:
                 mw.deckBrowser.refresh()
         except Exception:
             pass
-    mw.progress.single_shot(300, show_panel_now)
-    gui_hooks.profile_did_open.append(lambda: mw.progress.single_shot(300, show_panel_now))
+
+    if mw.col:                      # add-on enabled/reloaded while a profile is already open
+        on_profile_open()
     return fr

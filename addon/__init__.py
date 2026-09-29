@@ -488,8 +488,7 @@ def setup() -> None:
     # profile switches: memory is per add-on, but the review state resets
     gui_hooks.profile_did_open.append(lambda: fly.send({"type": "session_end"}))
 
-    from . import friends
-    fr = friends.setup()
+    fr = friends.setup()          # already registered at import time; returns the existing object
     menu.addSeparator()
     code = QAction("Friends: show my fly code", mw)
     code.triggered.connect(lambda *_: fr.show_code())
@@ -516,4 +515,10 @@ def _amnesia(fly: FlyWidget) -> None:
     tooltip("The fly stares blankly. It remembers nothing.")
 
 
+# Imported last: friends.py uses the helpers defined above, so importing it at the top would be circular.
+from . import friends  # noqa: E402
+
+# Hooks that decide what Anki's own screens render must be registered before the first paint, which
+# happens before main_window_did_init. The widget itself needs the main window, so it waits.
+friends.setup()
 gui_hooks.main_window_did_init.append(setup)

@@ -3,7 +3,14 @@
 const $ = (id) => document.getElementById(id);
 window.addEventListener('error', (e) => { console.warn('[fly race]', e.message); e.preventDefault(); });
 const bridge = () => (window.parent && typeof window.parent.pycmd === 'function') ? window.parent.pycmd : null;
-const ask = (cmd) => new Promise((res) => { const p = bridge(); if (!p) return res(null); try { p('flyfriends:' + cmd, res); } catch { res(null); } });
+const ask = (cmd) => new Promise((res) => {
+  const p = bridge();
+  if (!p) return res(null);
+  let done = false;
+  const finish = (v) => { if (!done) { done = true; res(v); } };
+  setTimeout(() => finish(null), 8000);             // never hang the panel on a lost reply
+  try { p('flyfriends:' + cmd, finish); } catch { finish(null); }
+});
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 class Race {
@@ -27,12 +34,17 @@ class Race {
   }
 
   async refresh() {
-    const data = await ask('list');
-    if (!data) return;
+    let data = await ask('list');
+    if (!data) {
+      // the bridge is injected after this page loads; retry a few times before giving up
+      for (let i = 0; i < 5 && !data; i++) { await new Promise(r => setTimeout(r, 400 * (i + 1))); data = await ask('list'); }
+    }
+    if (!data) { $('week').textContent = 'loading…'; return; }
     this.data = data;
     $('code').textContent = data.me.local ? 'just you for now' : (data.me.code || 'no code yet');
     $('code').title = data.me.local ? 'add a friends server in the add-on config to race friends' : 'your fly code';
-    $('week').textContent = 'this week';
+    $('week').textContent = data.offline ? 'this week · offline' : 'this week';
+    $('week').title = data.offline ? 'cannot reach the friends server right now; your own row is from this computer' : '';
     $('add').textContent = data.me.local ? 'Race friends…' : 'Add a friend';
     const rows = [{ ...data.me, me: true }, ...(data.friends || [])];
     rows.sort((a, b) => (b.weekReviews || 0) - (a.weekReviews || 0) || (b.weekDays || 0) - (a.weekDays || 0));

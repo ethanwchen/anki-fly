@@ -70,6 +70,21 @@ assert any(c["model"] == "fsrs" for c in data["cards"]), "expected FSRS memory s
 dlg = exam.ExamDialog({"cards": data["cards"], "pattern": pat, "desired_retention": dr, "memory": None, "search": "deck:Test", "total_matching": 12})
 pump(300)
 dlg.close()
-print("OK")
+# --- regression: the fly race panel must reach the deck list on the very first paint.
+# Anki renders the deck list before main_window_did_init, so the hook has to be registered at
+# add-on import time. Registering it later shipped broken in 0.2.5 (panel only after navigating).
+from aqt.deckbrowser import DeckBrowserContent
+content = DeckBrowserContent(tree="", stats="")
+gui_hooks.deck_browser_will_render_content(mw.deckBrowser, content)
+assert "flyfriends" in content.stats, "fly race panel not injected into the deck browser"
+
+src = open(os.path.join(ROOT, "addon", "__init__.py")).read()
+tail = src[src.index("gui_hooks.main_window_did_init.append(setup)"):]
+head = src[: src.index("gui_hooks.main_window_did_init.append(setup)")]
+assert "\nfriends.setup()" in head, "friends.setup() must run at import time, before the first paint"
+print("race panel present at import time")
+print("ALL OK")
+
 mw.unloadProfileAndExit()
 pump(1500)
+
